@@ -1,0 +1,96 @@
+//! Utilitários de download compartilhados (PHP, MySQL, Caddy, Adminer Neo, Mailpit).
+
+use serde::Serialize;
+use sha2::{Digest, Sha512};
+use std::fs::File;
+use std::io::{Read, Write};
+use std::path::Path;
+use std::time::{Duration, Instant};
+
+/// Evento de progresso enviado à interface (`install-progress`).
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallProgress {
+    /// Identificador do item: versão do PHP (`8.3.32`) ou nome da ferramenta (`mailpit`).
+    pub id: String,
+    /// `download` | `extract` | `verify` | `done` | `error`
+    pub stage: String,
+    pub downloaded: u64,
+    pub total: u64,
+    pub message: Option<String>,
+}
+
+fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .user_agent("LocalTusk/0.1")
+        .timeout_connect(Some(Duration::from_secs(20)))
+        .timeout_resolve(Some(Duration::from_secs(20)))
+        .build()
+        .into()
+}
+
+/// GET que devolve o corpo como texto (até 10 MB).
+pub fn get_string(url: &str) -> Result<String, String> {
+    agent()
+        .get(url)
+        .call()
+        .map_err(|e| format!("falha ao acessar {url}: {e}"))?
+        .body_mut()
+        .read_to_string()
+        .map_err(|e| e.to_string())
+}
+
+/// Baixa `url` para `dest`, seguindo redirecionamentos. `on_progress(baixado, total)` é
+/// chamado com no máximo ~6 eventos por segundo e uma vez ao final.
+pub fn download_to(
+    url: &str,
+    dest: &Path,
+    on_progress: &mut dyn FnMut(u64, u64),
+) -> Result<(), String> {
+    let mut resp = agent().get(url).call().map_err(|e| match e {
+        ureq::Error::StatusCode(404) => "arquivo não disponível para download (404)".to_string(),
+        other => format!("falha no download: {other}"),
+    })?;
+    let total = resp.body().content_length().unwrap_or(0);
+    let mut reader = resp.body_mut().as_reader();
+    let mut out = File::create(dest).map_err(|e| e.to_string())?;
+    let mut buf = vec![0u8; 64 * 1024];
+    let mut downloaded = 0u64;
+    let mut last = Instant::now();
+    on_progress(0, total);
+    loop {
+        let n = reader
+            .read(&mut buf)
+            .map_err(|e| format!("falha no download: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        out.write_all(&buf[..n]).map_err(|e| e.to_string())?;
+        downloaded += n as u64;
+        if last.elapsed() > Duration::from_millis(150) {
+            on_progress(downloaded, total);
+            last = Instant::now();
+        }
+    }
+    out.flush().map_err(|e| e.to_string())?;
+    if total > 0 && downloaded != total {
+        return Err("download incompleto, tente novamente".into());
+    }
+    on_progress(downloaded, downloaded.max(total));
+    Ok(())
+}
+
+/// SHA-512 do arquivo, em hexadecimal minúsculo.
+pub fn sha512_hex(path: &Path) -> Result<String, String> {
+    let mut f = File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha512::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}

@@ -1,0 +1,283 @@
+import { invoke } from "@tauri-apps/api/core";
+
+export interface Project {
+  id: string;
+  name: string;
+  docroot: string;
+  phpVersion: string;
+  dbVersion: string;
+  /** O banco já foi criado: a versão do MySQL não pode mais ser trocada. */
+  dbInitialized: boolean;
+  httpPort: number;
+  dbPort: number;
+  dbName: string;
+  dbUser: string;
+  dbPassword: string;
+  url: string;
+  path: string;
+  running: boolean;
+  busy: boolean;
+  hasAdminneo: boolean;
+  hasMailpit: boolean;
+  /** Há um WordPress instalado na pasta pública. */
+  hasWordpress: boolean;
+  /** A pasta pública tem arquivos além do index.php de exemplo. */
+  docrootInUse: boolean;
+}
+
+export interface PhpInstall {
+  fullVersion: string;
+  version: string;
+  fpm: string;
+  /** Instalada pelo LocalTusk (true) ou vinda do sistema, ex.: Homebrew (false). */
+  managed: boolean;
+}
+
+export interface PhpRelease {
+  version: string;
+  minor: string;
+  size: string;
+  installed: boolean;
+  latest: boolean;
+}
+
+export interface MysqlInstall {
+  fullVersion: string;
+  series: string;
+  mysqld: string;
+  /** Instalado pelo LocalTusk (true) ou vindo do sistema, ex.: Homebrew (false). */
+  managed: boolean;
+}
+
+export interface MysqlRelease {
+  version: string;
+  series: string;
+  size: string;
+  installed: boolean;
+  latest: boolean;
+}
+
+export interface InstallProgress {
+  /** Versão do PHP (8.3.32), `mysql-<versão>`, `wordpress-<projeto>` ou id da ferramenta (mailpit). */
+  id: string;
+  stage: "download" | "extract" | "verify" | "done" | "error";
+  downloaded: number;
+  total: number;
+  message: string | null;
+}
+
+export interface AppInfo {
+  dataDir: string;
+  phpDir: string;
+  backupsDir: string;
+  blueprintsDir: string;
+  installing: string[];
+}
+
+/** Modelo de projeto (arquivos + banco + versões) guardado em `~/LocalTusk/blueprints`. */
+export interface BlueprintInfo {
+  fileName: string;
+  path: string;
+  name: string;
+  description: string;
+  size: number;
+  /** Segundos desde 1970. */
+  createdAt: number;
+  /** Projeto a partir do qual foi criado. */
+  sourceName: string;
+  phpVersion: string;
+  dbVersion: string;
+  docroot: string;
+  hasWordpress: boolean;
+}
+
+export interface BackupInfo {
+  fileName: string;
+  path: string;
+  size: number;
+  /** Segundos desde 1970. */
+  createdAt: number;
+  projectId: string;
+  projectName: string;
+  hasWordpress: boolean;
+}
+
+export type HeaderPair = [string, string];
+
+/** Requisição que o PHP do projeto recebeu (inspetor da aba API). */
+export interface CapturedRequest {
+  /** Início, em segundos desde 1970 (com fração). */
+  time: number;
+  method: string;
+  /** Caminho e query, como chegou (`/api/users?page=2`). */
+  uri: string;
+  host: string;
+  remote: string;
+  requestHeaders: HeaderPair[];
+  requestBody: string | null;
+  requestBodyTruncated: boolean;
+  requestSize: number;
+  /** Campos de um formulário multipart (o corpo bruto não existe nesse caso). */
+  form: Record<string, unknown> | null;
+  files: { field: string; name: string; size: number }[];
+  status: number;
+  responseHeaders: HeaderPair[];
+  responseBody: string | null;
+  responseBodyTruncated: boolean;
+  responseSize: number;
+  durationMs: number;
+}
+
+export interface RequestsChunk {
+  entries: CapturedRequest[];
+  offset: number;
+}
+
+export interface ApiRequestOptions {
+  method: string;
+  url: string;
+  headers: HeaderPair[];
+  body?: string | null;
+  followRedirects?: boolean;
+  timeoutSecs?: number;
+}
+
+export interface ApiResponse {
+  status: number;
+  statusText: string;
+  headers: HeaderPair[];
+  body: string;
+  binary: boolean;
+  truncated: boolean;
+  size: number;
+  durationMs: number;
+}
+
+export interface RestoreResult {
+  project: Project;
+  /** Algo secundário falhou, mas o backup foi restaurado. */
+  warning: string | null;
+}
+
+export interface ExtraStatus {
+  id: "caddy" | "adminneo" | "mailpit" | "wpcli";
+  label: string;
+  description: string;
+  /** Necessária para rodar qualquer projeto. */
+  essential: boolean;
+  installed: boolean;
+  version: string | null;
+}
+
+export type ToolId = "adminneo" | "mailpit";
+
+export interface WpOptions {
+  title: string;
+  adminUser: string;
+  adminPassword: string;
+  adminEmail: string;
+  /** Idioma do WordPress, ex.: pt_BR. */
+  locale: string;
+  /** Apaga o que houver na pasta pública antes de instalar. */
+  replaceExisting: boolean;
+}
+
+export interface ToolStatus {
+  name: string;
+  found: boolean;
+  path: string | null;
+  installHint: string;
+}
+
+export const LOG_FILES = [
+  "access.log",
+  "php-error.log",
+  "php-fpm.log",
+  "mysql.log",
+  "mailpit.log",
+  "wp-cli.log",
+  "caddy.log",
+] as const;
+
+export const api = {
+  listProjects: () => invoke<Project[]>("list_projects"),
+  checkTools: () => invoke<ToolStatus[]>("check_tools"),
+  listPhpVersions: () => invoke<PhpInstall[]>("list_php_versions"),
+  createProject: (name: string, phpVersion: string, dbVersion: string, docroot: string) =>
+    invoke<Project>("create_project", { name, phpVersion, dbVersion, docroot }),
+  startProject: (id: string) => invoke<Project>("start_project", { id }),
+  stopProject: (id: string) => invoke<Project>("stop_project", { id }),
+  deleteProject: (id: string) => invoke<void>("delete_project", { id }),
+  setPhpVersion: (id: string, phpVersion: string) =>
+    invoke<Project>("set_php_version", { id, phpVersion }),
+  setDbVersion: (id: string, dbVersion: string) =>
+    invoke<Project>("set_db_version", { id, dbVersion }),
+  listMysqlVersions: () => invoke<MysqlInstall[]>("list_mysql_versions"),
+  mysqlCatalog: () => invoke<MysqlRelease[]>("mysql_catalog"),
+  installMysql: (version: string) => invoke<void>("install_mysql", { version }),
+  uninstallMysql: (version: string) => invoke<void>("uninstall_mysql", { version }),
+  openSite: (id: string, path?: string) => invoke<void>("open_site", { id, path }),
+  openTerminal: (id: string) => invoke<void>("open_terminal", { id }),
+  installWordpress: (id: string, options: WpOptions) =>
+    invoke<void>("install_wordpress", { id, options }),
+  readRequests: (id: string, offset: number) => invoke<RequestsChunk>("read_requests", { id, offset }),
+  clearRequests: (id: string) => invoke<void>("clear_requests", { id }),
+  loadCollection: (id: string) => invoke<string>("load_collection", { id }),
+  saveCollection: (id: string, content: string) => invoke<void>("save_collection", { id, content }),
+  exportCollection: (id: string, path: string) => invoke<void>("export_collection", { id, path }),
+  readCollectionFile: (path: string) => invoke<string>("read_collection_file", { path }),
+  sendRequest: (request: ApiRequestOptions) => invoke<ApiResponse>("send_request", { request }),
+  listBackups: (id?: string) => invoke<BackupInfo[]>("list_backups", { id }),
+  createBackup: (id: string) => invoke<BackupInfo>("create_backup", { id }),
+  /** Sem `target`, cria um projeto novo; com `target`, substitui o conteúdo desse projeto. */
+  restoreBackup: (path: string, target?: string) => invoke<RestoreResult>("restore_backup", { path, target }),
+  deleteBackup: (path: string) => invoke<void>("delete_backup", { path }),
+  openBackupsDir: () => invoke<void>("open_backups_dir"),
+  listBlueprints: () => invoke<BlueprintInfo[]>("list_blueprints"),
+  createBlueprint: (id: string, name: string, description: string) =>
+    invoke<BlueprintInfo>("create_blueprint", { id, name, description }),
+  createProjectFromBlueprint: (path: string, name: string) =>
+    invoke<RestoreResult>("create_project_from_blueprint", { path, name }),
+  deleteBlueprint: (path: string) => invoke<void>("delete_blueprint", { path }),
+  importBlueprint: (path: string) => invoke<BlueprintInfo>("import_blueprint", { path }),
+  /** Devolve o caminho gravado (a extensão `.tar.gz` é acrescentada se faltar). */
+  exportBlueprint: (path: string, dest: string) => invoke<string>("export_blueprint", { path, dest }),
+  openBlueprintsDir: () => invoke<void>("open_blueprints_dir"),
+  openFolder: (id: string) => invoke<void>("open_folder", { id }),
+  readLog: (id: string, file: string) => invoke<string>("read_log", { id, file }),
+  appInfo: () => invoke<AppInfo>("app_info"),
+  openDataDir: () => invoke<void>("open_data_dir"),
+  phpCatalog: () => invoke<PhpRelease[]>("php_catalog"),
+  installPhp: (version: string) => invoke<void>("install_php", { version }),
+  uninstallPhp: (version: string) => invoke<void>("uninstall_php", { version }),
+  extrasStatus: () => invoke<ExtraStatus[]>("extras_status"),
+  installExtra: (id: string) => invoke<void>("install_extra", { id }),
+  uninstallExtra: (id: string) => invoke<void>("uninstall_extra", { id }),
+  openTool: (id: string, tool: ToolId) => invoke<void>("open_tool", { id, tool }),
+};
+
+/** Encontra o PHP que de fato rodaria para o valor salvo no projeto. */
+export function resolvePhp(phps: PhpInstall[], wanted: string): PhpInstall | null {
+  return (
+    phps.find((p) => p.fullVersion === wanted) ??
+    phps.find((p) => p.version === wanted) ??
+    phps[0] ??
+    null
+  );
+}
+
+/** Encontra o MySQL que de fato rodaria para o valor salvo no projeto. */
+export function resolveMysql(list: MysqlInstall[], wanted: string): MysqlInstall | null {
+  return (
+    list.find((m) => m.fullVersion === wanted) ??
+    list.find((m) => m.series === wanted) ??
+    list[0] ??
+    null
+  );
+}
+
+export function formatBytes(n: number): string {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
+  return `${(n / 1024 / 1024).toFixed(1)} MB`;
+}

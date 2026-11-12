@@ -1,0 +1,116 @@
+// Simula o backend do Tauri para desenvolver a interface no navegador
+// (`pnpm dev` + http://localhost:1420). Só é carregado em desenvolvimento e fora do Tauri.
+import { mockIPC } from "@tauri-apps/api/mocks";
+
+const projects = [
+  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true },
+  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true },
+  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false },
+];
+
+const phps = ["8.4.9", "8.3.32", "8.1.33"].map((v) => ({ fullVersion: v, version: v.split(".").slice(0, 2).join("."), fpm: `/x/${v}/php-fpm`, managed: true }));
+const mysqls = [{ fullVersion: "8.4.13", series: "8.4", mysqld: "/x/mysqld", managed: true }];
+const extras = [
+  { id: "caddy", label: "Caddy", description: "Servidor web de cada projeto. Obrigatório.", essential: true, installed: true, version: "2.11.9" },
+  { id: "adminneo", label: "Adminer Neo", description: "Administração do MySQL pelo navegador, leve e moderna, com login automático.", essential: false, installed: true, version: "5.2.0" },
+  { id: "mailpit", label: "Mailpit", description: "Caixa de e-mails de teste: tudo que o PHP enviar com mail() ou SMTP cai aqui.", essential: false, installed: true, version: "1.27.1" },
+  { id: "wpcli", label: "WP-CLI", description: "A linha de comando do WordPress (comando wp). Necessária para o botão \"Instalar WordPress\".", essential: false, installed: false, version: null },
+];
+const phpCatalog = [["8.5", "8.5.1", "8.5.0"], ["8.4", "8.4.9", "8.4.8", "8.4.7"], ["8.3", "8.3.32", "8.3.31"], ["8.2", "8.2.30"], ["8.1", "8.1.33", "8.1.32"], ["8.0", "8.0.30"]].flatMap(([minor, ...vs]) =>
+  vs.map((version, i) => ({ version, minor, size: "33.9M", installed: phps.some((p) => p.fullVersion === version), latest: i === 0 })));
+const mysqlCatalog = [["9.7", "9.7.4"], ["8.4", "8.4.13", "8.4.12"], ["8.0", "8.0.46", "8.0.45"]].flatMap(([series, ...vs]) =>
+  vs.map((version, i) => ({ version, series, size: "165.4M", installed: version === "8.4.13", latest: i === 0 })));
+
+const backups = [
+  { fileName: "loja-virtual-20261111-103000.tar.gz", path: "/Users/dev/LocalTusk/backups/loja-virtual-20261111-103000.tar.gz", size: 48_300_000, createdAt: 1794486600, projectId: "loja-virtual", projectName: "Loja Virtual", hasWordpress: false },
+  { fileName: "loja-virtual-antes-do-restore-20261110-170211.tar.gz", path: "/Users/dev/LocalTusk/backups/loja-virtual-antes-do-restore-20261110-170211.tar.gz", size: 47_100_000, createdAt: 1794427331, projectId: "loja-virtual", projectName: "Loja Virtual", hasWordpress: false },
+];
+
+const blueprints = [
+  { fileName: "landing-page.tar.gz", path: "/Users/dev/LocalTusk/blueprints/landing-page.tar.gz", name: "Landing page", description: "Base com formulário de contato e e-mail pelo Mailpit.", size: 3_400_000, createdAt: 1794486600, sourceName: "Landing Teste", phpVersion: "8.3.32", dbVersion: "8.4.13", docroot: "public", hasWordpress: false },
+  { fileName: "wordpress-limpo.tar.gz", path: "/Users/dev/LocalTusk/blueprints/wordpress-limpo.tar.gz", name: "WordPress limpo", description: "", size: 61_800_000, createdAt: 1794400000, sourceName: "Blog WordPress", phpVersion: "8.1.33", dbVersion: "8.4.13", docroot: "", hasWordpress: true },
+];
+
+const captured = [
+  { time: 1794486601.2, method: "GET", uri: "/api/produtos?page=2&limit=10", host: "loja-virtual.localhost:8000", remote: "127.0.0.1", requestHeaders: [["Host", "loja-virtual.localhost:8000"], ["Accept", "application/json"], ["User-Agent", "curl/8.7.1"]], requestBody: "", requestBodyTruncated: false, requestSize: 0, form: null, files: [], status: 200, responseHeaders: [["Content-Type", "application/json"], ["X-Powered-By", "PHP/8.3.32"]], responseBody: JSON.stringify({ data: [{ id: 1, nome: "Camiseta", preco: 59.9 }, { id: 2, nome: "Caneca", preco: 24.5 }], page: 2 }), responseBodyTruncated: false, responseSize: 112, durationMs: 18.4 },
+  { time: 1794486608.9, method: "POST", uri: "/api/pedidos", host: "loja-virtual.localhost:8000", remote: "127.0.0.1", requestHeaders: [["Host", "loja-virtual.localhost:8000"], ["Content-Type", "application/json"], ["Authorization", "Bearer eyJhbGciOi..."]], requestBody: JSON.stringify({ cliente: "Ana", itens: [{ produto: 1, qtd: 2 }] }), requestBodyTruncated: false, requestSize: 58, form: null, files: [], status: 201, responseHeaders: [["Content-Type", "application/json"], ["Location", "/api/pedidos/42"]], responseBody: JSON.stringify({ id: 42, status: "criado" }), responseBodyTruncated: false, responseSize: 28, durationMs: 41.7 },
+  { time: 1794486615.3, method: "PUT", uri: "/api/pedidos/999", host: "loja-virtual.localhost:8000", remote: "127.0.0.1", requestHeaders: [["Content-Type", "application/json"]], requestBody: "{\"status\":\"pago\"}", requestBodyTruncated: false, requestSize: 17, form: null, files: [], status: 404, responseHeaders: [["Content-Type", "application/json"]], responseBody: JSON.stringify({ erro: "Pedido não encontrado" }), responseBodyTruncated: false, responseSize: 32, durationMs: 6.1 },
+  { time: 1794486622.0, method: "GET", uri: "/api/relatorio", host: "loja-virtual.localhost:8000", remote: "127.0.0.1", requestHeaders: [], requestBody: "", requestBodyTruncated: false, requestSize: 0, form: null, files: [], status: 500, responseHeaders: [["Content-Type", "text/html; charset=UTF-8"]], responseBody: "<br />\n<b>Fatal error</b>: Uncaught Error: Call to undefined function gerar() in /app/api/relatorio.php:12", responseBodyTruncated: false, responseSize: 98, durationMs: 9.8 },
+];
+
+let collectionText = JSON.stringify({ format: "localtusk-collection", version: 1, requests: [
+  { id: "c1", name: "Listar tarefas", method: "GET", url: "/tarefas?limite=5", headers: [{ key: "Accept", value: "application/json", enabled: true }], bodyMode: "none", body: "", followRedirects: false },
+  { id: "c2", name: "Criar tarefa", method: "POST", url: "/tarefas", headers: [{ key: "Accept", value: "application/json", enabled: true }], bodyMode: "json", body: "{\"titulo\":\"Nova\"}", followRedirects: false },
+] });
+
+const logs = `[10/Nov/2026:17:02:11] GET / 200 14ms
+[10/Nov/2026:17:02:12] GET /assets/app.css 200 2ms
+[10/Nov/2026:17:02:14] POST /api/cart 201 38ms
+[10/Nov/2026:17:02:20] GET /produtos?page=2 200 22ms
+[10/Nov/2026:17:02:31] GET /favicon.ico 404 1ms`;
+
+/** Com `?slow` na URL, as listas demoram a chegar: serve para ver os esqueletos de carregamento. */
+const slow = new URLSearchParams(location.search).has("slow");
+const later = <T>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), slow ? 9000 : 0));
+
+export function installDevMock() {
+  mockIPC(
+    (cmd, args) => {
+      const a = (args ?? {}) as Record<string, unknown>;
+      switch (cmd) {
+        case "list_projects": return later(projects);
+        case "check_tools": return [];
+        case "list_php_versions": return phps;
+        case "list_mysql_versions": return mysqls;
+        case "extras_status": return extras;
+        case "app_info": return { dataDir: "/Users/dev/LocalTusk", phpDir: "/Users/dev/LocalTusk/bin/php", backupsDir: "/Users/dev/LocalTusk/backups", blueprintsDir: "/Users/dev/LocalTusk/blueprints", installing: [] };
+        case "read_requests": {
+          return (a.offset as number) > 0 ? { entries: [], offset: 1 } : { entries: captured, offset: 1 };
+        }
+        case "clear_requests": return null;
+        case "load_collection": return collectionText;
+        case "save_collection": collectionText = a.content as string; return null;
+        case "export_collection": return null;
+        case "read_collection_file": return collectionText;
+        case "send_request": {
+          const r = a.request as { method: string; url: string };
+          return { status: r.url.includes("erro") ? 500 : 200, statusText: r.url.includes("erro") ? "Internal Server Error" : "OK", headers: [["content-type", "application/json"], ["server", "Caddy"]], body: JSON.stringify({ ok: true, metodo: r.method, url: r.url, itens: [1, 2, 3] }), binary: false, truncated: false, size: 71, durationMs: 23 };
+        }
+        case "list_backups": return backups.filter((b) => !a.id || b.projectId === a.id);
+        case "create_backup": return backups[0];
+        case "restore_backup": return { project: projects[0], warning: null };
+        case "list_blueprints": return later(blueprints);
+        case "create_blueprint": {
+          const bp = { fileName: "novo.tar.gz", path: "/Users/dev/LocalTusk/blueprints/novo.tar.gz", name: a.name as string, description: a.description as string, size: 12_000_000, createdAt: 1794490000, sourceName: "Loja Virtual", phpVersion: "8.3.32", dbVersion: "8.4.13", docroot: "public", hasWordpress: false };
+          blueprints.unshift(bp);
+          return bp;
+        }
+        case "create_project_from_blueprint": return { project: projects[0], warning: "O blueprint foi feito com PHP 8.1.33, que não está instalado aqui. O projeto usa as versões mais recentes instaladas." };
+        case "delete_blueprint": {
+          const i = blueprints.findIndex((b) => b.path === a.path);
+          if (i >= 0) blueprints.splice(i, 1);
+          return null;
+        }
+        case "import_blueprint": return blueprints[0];
+        case "export_blueprint": return a.dest;
+        case "plugin:dialog|save": return "/Users/dev/Desktop/blueprint.tar.gz";
+        case "plugin:dialog|open": return "/Users/dev/LocalTusk/backups/loja-virtual-20261110-170211.tar.gz";
+        case "php_catalog": return phpCatalog;
+        case "mysql_catalog": return mysqlCatalog;
+        case "read_log": return logs;
+        case "start_project":
+        case "stop_project": {
+          const p = projects.find((x) => x.id === a.id)!;
+          // O estado só muda depois da espera, como no app de verdade.
+          return later(p).then(() => {
+            p.running = cmd === "start_project";
+            p.hasAdminneo = p.hasMailpit = p.running;
+            return p;
+          });
+        }
+        default: return null;
+      }
+    },
+    { shouldMockEvents: true },
+  );
+}

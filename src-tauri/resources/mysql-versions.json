@@ -1,0 +1,512 @@
+{
+ "generated": "2026-11-09",
+ "versions": [
+  {
+   "version": "9.7.4",
+   "series": "9.7",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-9.7",
+     "label": "macos15",
+     "bytes": 174454473
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-9.7",
+     "label": "macos15",
+     "bytes": 181509239
+    }
+   }
+  },
+  {
+   "version": "9.7.2",
+   "series": "9.7",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-9.7",
+     "label": "macos15",
+     "bytes": 177169946
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-9.7",
+     "label": "macos15",
+     "bytes": 181261133
+    }
+   }
+  },
+  {
+   "version": "9.7.1",
+   "series": "9.7",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-9.7",
+     "label": "macos15",
+     "bytes": 176760433
+    },
+    "x86_64": {
+     "path": "archives/mysql-9.7",
+     "label": "macos15",
+     "bytes": 180860072
+    }
+   }
+  },
+  {
+   "version": "9.7.0",
+   "series": "9.7",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-9.7",
+     "label": "macos15",
+     "bytes": 176750334
+    },
+    "x86_64": {
+     "path": "archives/mysql-9.7",
+     "label": "macos15",
+     "bytes": 180852571
+    }
+   }
+  },
+  {
+   "version": "8.4.13",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos15",
+     "bytes": 165362783
+    }
+   }
+  },
+  {
+   "version": "8.4.11",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos15",
+     "bytes": 167977240
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos15",
+     "bytes": 171974960
+    }
+   }
+  },
+  {
+   "version": "8.4.10",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos15",
+     "bytes": 167808104
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos15",
+     "bytes": 171807202
+    }
+   }
+  },
+  {
+   "version": "8.4.9",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos15",
+     "bytes": 167810884
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 171809838
+    }
+   }
+  },
+  {
+   "version": "8.4.8",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 166754131
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 171209391
+    }
+   }
+  },
+  {
+   "version": "8.4.7",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 166712285
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 171190441
+    }
+   }
+  },
+  {
+   "version": "8.4.6",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 166683072
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 171124041
+    }
+   }
+  },
+  {
+   "version": "8.4.5",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 164059644
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 168419442
+    }
+   }
+  },
+  {
+   "version": "8.4.4",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 163906949
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos15",
+     "bytes": 168225587
+    }
+   }
+  },
+  {
+   "version": "8.4.3",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos14",
+     "bytes": 164352132
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos14",
+     "bytes": 168667303
+    }
+   }
+  },
+  {
+   "version": "8.4.2",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos14",
+     "bytes": 164176013
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.4",
+     "label": "macos14",
+     "bytes": 168494682
+    }
+   }
+  },
+  {
+   "version": "8.4.0",
+   "series": "8.4",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos14",
+     "bytes": 164070025
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "label": "macos14",
+     "bytes": 168383437
+    }
+   }
+  },
+  {
+   "version": "8.0.46",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos15",
+     "bytes": 172353282
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos15",
+     "bytes": 176499229
+    }
+   }
+  },
+  {
+   "version": "8.0.45",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos15",
+     "bytes": 171320247
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos15",
+     "bytes": 175942001
+    }
+   }
+  },
+  {
+   "version": "8.0.44",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos15",
+     "bytes": 171304394
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos15",
+     "bytes": 175890728
+    }
+   }
+  },
+  {
+   "version": "8.0.43",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos15",
+     "bytes": 171287430
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos15",
+     "bytes": 175902381
+    }
+   }
+  },
+  {
+   "version": "8.0.42",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos15",
+     "bytes": 168654431
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos15",
+     "bytes": 173140184
+    }
+   }
+  },
+  {
+   "version": "8.0.41",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos15",
+     "bytes": 168504183
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos15",
+     "bytes": 172991634
+    }
+   }
+  },
+  {
+   "version": "8.0.40",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos14",
+     "bytes": 169081483
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos14",
+     "bytes": 173573401
+    }
+   }
+  },
+  {
+   "version": "8.0.39",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos14",
+     "bytes": 168902970
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos14",
+     "bytes": 173418454
+    }
+   }
+  },
+  {
+   "version": "8.0.37",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos14",
+     "bytes": 168811936
+    },
+    "x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "label": "macos14",
+     "bytes": 173332649
+    }
+   }
+  },
+  {
+   "version": "8.0.36",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos14",
+     "bytes": 168209869
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos14",
+     "bytes": 172683781
+    }
+   }
+  },
+  {
+   "version": "8.0.35",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 183807585
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 188302009
+    }
+   }
+  },
+  {
+   "version": "8.0.34",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 183763029
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 188242959
+    }
+   }
+  },
+  {
+   "version": "8.0.33",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 185457614
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 190256814
+    }
+   }
+  },
+  {
+   "version": "8.0.32",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 183155517
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos13",
+     "bytes": 187943845
+    }
+   }
+  },
+  {
+   "version": "8.0.31",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos12",
+     "bytes": 180656509
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos12",
+     "bytes": 186704097
+    }
+   }
+  },
+  {
+   "version": "8.0.30",
+   "series": "8.0",
+   "builds": {
+    "arm64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos12",
+     "bytes": 175929717
+    },
+    "x86_64": {
+     "path": "archives/mysql-8.0",
+     "label": "macos12",
+     "bytes": 181767006
+    }
+   }
+  }
+ ]
+}
