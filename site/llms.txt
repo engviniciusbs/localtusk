@@ -1,0 +1,12 @@
+# LocalTusk
+
+> LocalTusk é um aplicativo gratuito e open source (licença MIT) para desenvolver em PHP no computador, sem Docker. Cada projeto roda com Caddy, PHP-FPM e MySQL nativos, com Adminer Neo, Mailpit, WP-CLI, inspetor e cliente de API, backups e blueprints. Hoje funciona no macOS; Windows e Linux estão em desenvolvimento.
+
+## Páginas
+- [Início](https://jhonatanmp.github.io/localtusk/): recursos, como funciona, comparação com Laravel Herd, ServBay, FlyEnv, Laragon e XAMPP, e perguntas frequentes.
+- [Baixar](https://jhonatanmp.github.io/localtusk/baixar/): versão mais recente, requisitos e como compilar a partir do código-fonte.
+- [Licença MIT](https://jhonatanmp.github.io/localtusk/licenca/): texto da licença e componentes de terceiros.
+- [Privacidade](https://jhonatanmp.github.io/localtusk/privacidade/): sem conta, sem telemetria; o que o app e o site fazem com a rede.
+
+## Código
+- [Repositório no GitHub](https://github.com/jhonatanMP/localtusk)

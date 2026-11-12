@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>LocalTusk — ambiente PHP local grátis, sem Docker</title>
+  <meta name="description" content="O melhor ambiente para desenvolver em PHP no macOS: Caddy, PHP-FPM e MySQL nativos, Adminer Neo, Mailpit, WP-CLI, inspetor de API e backups. Gratuito e open source (MIT).">
+  <link rel="canonical" href="https://jhonatanmp.github.io/localtusk/">
+  <meta name="robots" content="index, follow, max-image-preview:large">
+  <meta name="theme-color" content="#0d0e15">
+  <meta name="color-scheme" content="dark">
+
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="LocalTusk">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:title" content="LocalTusk — o melhor ambiente para desenvolver em PHP">
+  <meta property="og:description" content="Caddy, PHP-FPM e MySQL nativos, sem Docker. Adminer Neo, Mailpit, WP-CLI, inspetor de API, backups e blueprints. Gratuito e open source.">
+  <meta property="og:url" content="https://jhonatanmp.github.io/localtusk/">
+  <meta property="og:image" content="https://jhonatanmp.github.io/localtusk/assets/img/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="LocalTusk: o melhor ambiente para desenvolver em PHP">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="LocalTusk — o melhor ambiente para desenvolver em PHP">
+  <meta name="twitter:description" content="Caddy, PHP-FPM e MySQL nativos, sem Docker. Gratuito e open source (MIT).">
+  <meta name="twitter:image" content="https://jhonatanmp.github.io/localtusk/assets/img/og.png">
+
+  <link rel="icon" href="assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preload" href="assets/fonts/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="assets/fonts/jetbrains-mono.woff2" as="font" type="font/woff2" crossorigin>
+  <script>document.documentElement.classList.add("js")</script>
+  <link rel="stylesheet" href="assets/css/site.css">
+
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebSite",
+        "@id": "https://jhonatanmp.github.io/localtusk/#site",
+        "name": "LocalTusk",
+        "url": "https://jhonatanmp.github.io/localtusk/",
+        "inLanguage": "pt-BR"
+      },
+      {
+        "@type": "SoftwareApplication",
+        "@id": "https://jhonatanmp.github.io/localtusk/#app",
+        "name": "LocalTusk",
+        "description": "Ambiente de desenvolvimento PHP local para macOS, sem Docker, com Caddy, PHP-FPM e MySQL nativos, Adminer Neo, Mailpit, WP-CLI, inspetor de API, backups e blueprints.",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "macOS",
+        "inLanguage": "pt-BR",
+        "url": "https://jhonatanmp.github.io/localtusk/",
+        "downloadUrl": "https://jhonatanmp.github.io/localtusk/baixar/",
+        "image": "https://jhonatanmp.github.io/localtusk/assets/img/og.png",
+        "license": "https://opensource.org/licenses/MIT",
+        "isAccessibleForFree": true,
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "BRL" },
+        "author": { "@type": "Person", "name": "Jhonatan Machado", "url": "https://github.com/jhonatanMP" }
+      }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+  <div class="progress" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="./" aria-label="LocalTusk, página inicial">
+        <img src="assets/img/favicon.svg" width="34" height="34" alt="">
+        <span>LocalTusk</span>
+      </a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Abrir menu">
+        <svg class="ico"><use href="assets/img/icons.svg#i-menu"/></svg>
+      </button>
+      <nav class="nav-links" id="nav-links" aria-label="Principal">
+        <a href="#recursos">Recursos</a>
+        <a href="#como-funciona">Como funciona</a>
+        <a href="#comparacao">Comparação</a>
+        <a href="#faq">Perguntas</a>
+        <a class="nav-gh" href="https://github.com/jhonatanMP/localtusk" rel="noopener" aria-label="Código no GitHub">
+          <svg class="ico ico-fill"><use href="assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <a class="btn btn-primary btn-sm" href="baixar/">
+          <svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> Baixar
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <!-- ================================================================ Hero -->
+    <section class="hero">
+      <div class="glow glow-a" aria-hidden="true"></div>
+      <div class="glow glow-b" aria-hidden="true"></div>
+      <div class="container">
+        <p class="pill" data-hero><span class="tag">macOS</span> <span><b>Gratuito</b> e open source, sob licença MIT</span></p>
+        <h1>O melhor ambiente para <span class="grad">desenvolver em PHP</span></h1>
+        <p class="hero-sub" data-hero>O LocalTusk monta cada projeto com Caddy, PHP-FPM e MySQL nativos, sem Docker e sem configuração. Escolha as versões, clique em iniciar e abra o site em <code class="mono">projeto.localhost</code>.</p>
+        <div class="hero-cta" data-hero>
+          <a class="btn btn-primary" href="baixar/"><svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> Baixar para macOS</a>
+          <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk" rel="noopener"><svg class="ico ico-fill"><use href="assets/img/icons.svg#i-github"/></svg> Ver no GitHub</a>
+        </div>
+        <ul class="hero-chips" data-hero>
+          <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Sem Docker</li>
+          <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Sem conta e sem telemetria</li>
+          <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Seus dados ficam na sua máquina</li>
+        </ul>
+        <p class="hero-note" data-hero>Windows e Linux estão em desenvolvimento.</p>
+
+        <div class="stage" data-hero>
+          <div class="window">
+            <div class="window-bar" aria-hidden="true"><i></i><i></i><i></i><span>LocalTusk</span></div>
+            <img src="assets/img/app-visao-geral.webp" width="1600" height="1000" fetchpriority="high" decoding="async"
+                 alt="Tela do LocalTusk mostrando o projeto Loja Virtual em execução, com PHP 8.3, MySQL 8.4, servidor Caddy, dados de conexão com o banco e atalhos para Adminer Neo e Mailpit.">
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <div class="strip">
+      <div class="container">
+        <small>Roda com</small>
+        <ul>
+          <li>Caddy</li><li>PHP-FPM</li><li>MySQL</li><li>Mailpit</li><li>Adminer Neo</li><li>WP-CLI</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ================================================================ Números -->
+    <section class="section" style="padding-bottom:0">
+      <div class="container">
+        <div class="facts" data-reveal>
+          <div class="fact"><b>PHP 8.x</b><span>Qualquer versão, instalada pelo próprio app.</span></div>
+          <div class="fact"><b>MySQL 8–9</b><span>8.0, 8.4 LTS e 9.x, uma por projeto.</span></div>
+          <div class="fact"><b>*.localhost</b><span>Domínio de cada projeto, sem mexer no arquivo hosts.</span></div>
+          <div class="fact"><b>0 containers</b><span>Processos nativos, sem Docker e sem máquina virtual.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ Recursos -->
+    <section class="section" id="recursos" aria-labelledby="t-recursos">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <span class="eyebrow">Recursos</span>
+          <h2 id="t-recursos">Tudo o que um projeto PHP precisa, no mesmo lugar</h2>
+          <p class="lead">Em vez de juntar servidor, banco, caixa de e-mail e ferramentas soltas, você tem tudo configurado por projeto e pronto para usar.</p>
+        </div>
+
+        <div class="bento">
+          <article class="card c-4" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-activity"/></svg></span>
+            <h3>Inspetor e cliente de API</h3>
+            <p>Veja cada requisição que chega ao seu PHP, com cabeçalhos, corpo, status e tempo. Reenvie, copie como cURL ou monte requisições no cliente de API integrado e guarde-as em uma coleção.</p>
+            <div class="card-shot">
+              <img src="assets/img/app-api.webp" width="1600" height="689" loading="lazy" decoding="async"
+                   alt="Aba API do LocalTusk listando requisições GET, PUT e POST com status 200, 201, 404 e 500, e o detalhe de uma resposta com erro do PHP.">
+            </div>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-layers"/></svg></span>
+            <h3>PHP e MySQL por projeto</h3>
+            <p>Instale as versões que precisar pelo app e escolha uma para cada projeto. Cada projeto tem a sua porta, o seu banco e os seus dados.</p>
+            <div class="tags"><span>PHP 8.1</span><span>PHP 8.3</span><span>PHP 8.4</span><span>MySQL 8.4</span></div>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-database"/></svg></span>
+            <h3>Adminer Neo</h3>
+            <p>Administre o MySQL pelo navegador, com login automático. Sem decorar usuário e senha de cada projeto.</p>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-mail"/></svg></span>
+            <h3>Mailpit para e-mails de teste</h3>
+            <p>Tudo que o PHP enviar com <code class="mono">mail()</code> ou SMTP cai na caixa do projeto, sem sair da sua máquina.</p>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-package"/></svg></span>
+            <h3>WordPress em um clique</h3>
+            <p>Baixa o WordPress, cria o <code class="mono">wp-config.php</code> com o banco do projeto e deixa o site pronto para usar. O WP-CLI é integrado.</p>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-terminal"/></svg></span>
+            <h3>Terminal do projeto</h3>
+            <p>Abre um terminal na pasta do projeto onde <code class="mono">php</code>, <code class="mono">wp</code> e <code class="mono">mysql</code> já usam as versões e o banco daquele projeto.</p>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-archive"/></svg></span>
+            <h3>Backup e restauração</h3>
+            <p>Guarde os arquivos e o banco num único arquivo e restaure quando quiser. Antes de restaurar, o app guarda um backup de segurança do estado atual.</p>
+          </article>
+
+          <article class="card c-2" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-template"/></svg></span>
+            <h3>Blueprints</h3>
+            <p>Salve um projeto pronto (arquivos, banco e versões) como modelo e crie novos já configurados. Dá para compartilhar o blueprint como arquivo.</p>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ Como funciona -->
+    <section class="section how" id="como-funciona" aria-labelledby="t-como">
+      <div class="container how-grid">
+        <div>
+          <div data-reveal>
+            <span class="eyebrow">Como funciona</span>
+            <h2 id="t-como">Cada projeto roda isolado, do seu jeito</h2>
+            <p class="lead">Nada de pilha única e compartilhada. Ao iniciar um projeto, o LocalTusk sobe só os processos dele.</p>
+          </div>
+          <ol class="steps">
+            <li>
+              <div><h3>Crie o projeto</h3><p>Dê um nome, escolha as versões do PHP e do MySQL e, se quiser, comece de um blueprint ou de um backup.</p></div>
+            </li>
+            <li>
+              <div><h3>Inicie com um clique</h3><p>O app baixa o que faltar e sobe o Caddy, o PHP-FPM e o MySQL do projeto, cada um na sua porta.</p></div>
+            </li>
+            <li>
+              <div><h3>Abra e desenvolva</h3><p>Seu site fica em <code class="mono">projeto.localhost</code>, com Adminer Neo, Mailpit e logs a um clique.</p></div>
+            </li>
+          </ol>
+        </div>
+
+        <figure class="flow" data-reveal aria-label="Diagrama: duas requisições passam por Caddy, PHP-FPM e MySQL, cada projeto com os seus processos">
+          <div class="flow-cap"><span>navegador → servidor → PHP → banco</span><span>2 projetos, 2 pilhas isoladas</span></div>
+
+          <div class="lane">
+            <div class="lane-title">loja-virtual.localhost:8000 <em>PHP 8.3 · MySQL 8.4</em></div>
+            <div class="lane-row">
+              <div class="track" aria-hidden="true"></div><div class="packet" aria-hidden="true"></div>
+              <div class="node"><span class="ping"></span><b>Navegador</b><small>você</small></div>
+              <div class="node"><span class="ping"></span><b>Caddy</b><small>:8000</small></div>
+              <div class="node"><span class="ping"></span><b>PHP-FPM</b><small>8.3</small></div>
+              <div class="node"><span class="ping"></span><b>MySQL</b><small>:3307</small></div>
+            </div>
+          </div>
+
+          <div class="lane">
+            <div class="lane-title">blog-wp.localhost:8001 <em>PHP 8.4 · MySQL 8.4</em></div>
+            <div class="lane-row">
+              <div class="track" aria-hidden="true"></div><div class="packet" aria-hidden="true"></div>
+              <div class="node"><span class="ping"></span><b>Navegador</b><small>você</small></div>
+              <div class="node"><span class="ping"></span><b>Caddy</b><small>:8001</small></div>
+              <div class="node"><span class="ping"></span><b>PHP-FPM</b><small>8.4</small></div>
+              <div class="node"><span class="ping"></span><b>MySQL</b><small>:3308</small></div>
+            </div>
+          </div>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ================================================================ Galeria -->
+    <section class="section" id="telas" aria-labelledby="t-telas">
+      <div class="container">
+        <div class="section-head center" data-reveal>
+          <span class="eyebrow">Por dentro</span>
+          <h2 id="t-telas">Uma interface feita para o dia a dia</h2>
+          <p class="lead">Telas reais do app. Sem mockups de fantasia.</p>
+        </div>
+
+        <div data-tabs data-reveal>
+          <div class="tabs" role="tablist" aria-label="Telas do app">
+            <button class="tab" role="tab" id="tab-1" aria-selected="true" aria-controls="panel-1" type="button">Visão geral</button>
+            <button class="tab" role="tab" id="tab-2" aria-selected="false" aria-controls="panel-2" tabindex="-1" type="button">API</button>
+            <button class="tab" role="tab" id="tab-3" aria-selected="false" aria-controls="panel-3" tabindex="-1" type="button">PHP e ferramentas</button>
+            <button class="tab" role="tab" id="tab-4" aria-selected="false" aria-controls="panel-4" tabindex="-1" type="button">Blueprints</button>
+          </div>
+          <div class="tab-panels">
+            <div class="tab-panel" role="tabpanel" id="panel-1" aria-labelledby="tab-1">
+              <div class="window"><div class="shot"><img src="assets/img/app-visao-geral.webp" width="1600" height="1000" loading="lazy" decoding="async" alt="Visão geral de um projeto: versões de PHP e MySQL, porta do servidor, dados de conexão com o banco, ferramentas e atalhos para WordPress e terminal."></div></div>
+              <p class="tab-caption">Versões, porta, dados do banco e atalhos de um projeto, tudo na mesma tela.</p>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="panel-2" aria-labelledby="tab-2" hidden>
+              <div class="window"><div class="shot"><img src="assets/img/app-api.webp" width="1600" height="689" loading="lazy" decoding="async" alt="Inspetor de requisições com lista de chamadas HTTP e o detalhe da resposta, incluindo cabeçalhos e corpo."></div></div>
+              <p class="tab-caption">O inspetor registra as chamadas que chegam ao projeto, e o cliente de API permite reenviá-las.</p>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="panel-3" aria-labelledby="tab-3" hidden>
+              <div class="window"><div class="shot"><img src="assets/img/app-ferramentas.webp" width="1600" height="756" loading="lazy" decoding="async" alt="Tela PHP e ferramentas com Caddy, Adminer Neo, Mailpit e WP-CLI, com os botões para instalar ou remover cada um."></div></div>
+              <p class="tab-caption">O app baixa e atualiza as ferramentas. Você instala só o que usa.</p>
+            </div>
+            <div class="tab-panel" role="tabpanel" id="panel-4" aria-labelledby="tab-4" hidden>
+              <div class="window"><div class="shot"><img src="assets/img/app-blueprints.webp" width="1600" height="400" loading="lazy" decoding="async" alt="Lista de blueprints com os modelos Landing page e WordPress limpo, cada um com as versões de PHP e MySQL e o botão Criar projeto."></div></div>
+              <p class="tab-caption">Modelos prontos para criar novos projetos em segundos.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ Comparação -->
+    <section class="section" id="comparacao" aria-labelledby="t-comp" style="background:var(--bg-2)">
+      <div class="container">
+        <div class="section-head" data-reveal>
+          <span class="eyebrow">Comparação</span>
+          <h2 id="t-comp">LocalTusk e as alternativas para PHP local</h2>
+          <p class="lead">Existem ótimas ferramentas nesse espaço. Esta tabela mostra, sem exagero, onde cada uma faz mais sentido.</p>
+        </div>
+
+        <div class="table-wrap" data-reveal tabindex="0" role="region" aria-label="Tabela comparativa, role para os lados em telas pequenas">
+          <table class="cmp">
+            <caption>Comparação entre LocalTusk, Laravel Herd, ServBay, FlyEnv, Laragon e XAMPP</caption>
+            <thead>
+              <tr>
+                <th scope="col"><span class="sr">Recurso</span></th>
+                <th scope="col" class="us"><span><img src="assets/img/favicon.svg" alt="" width="22" height="22"> LocalTusk</span></th>
+                <th scope="col">Laravel Herd</th>
+                <th scope="col">ServBay</th>
+                <th scope="col">FlyEnv</th>
+                <th scope="col">Laragon</th>
+                <th scope="col">XAMPP</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <th scope="row">Foco</th>
+                <td class="us">PHP em geral e WordPress</td>
+                <td>Laravel e PHP</td>
+                <td>PHP, Node, Python e outras linguagens</td>
+                <td>Vários runtimes, bancos e servidores web</td>
+                <td>PHP, Node e bancos no Windows</td>
+                <td>Pilha clássica: Apache, MariaDB, PHP e Perl</td>
+              </tr>
+              <tr>
+                <th scope="row">Plataformas</th>
+                <td class="us">macOS hoje<br><span class="no">Windows e Linux em desenvolvimento</span></td>
+                <td>macOS e Windows</td>
+                <td>macOS e Windows</td>
+                <td>Windows, macOS e Linux</td>
+                <td>Windows</td>
+                <td>Windows, macOS e Linux</td>
+              </tr>
+              <tr>
+                <th scope="row">Preço</th>
+                <td class="us"><b>Grátis</b>, sem limite de projetos</td>
+                <td>Grátis; Pro a US$&nbsp;99 por ano</td>
+                <td>Grátis com até 5 sites; Pro pago (US$&nbsp;9,90 por mês no plano mensal)</td>
+                <td>Grátis</td>
+                <td>Grátis para uso não comercial, com aviso de licença; comercial a partir de US$&nbsp;49 por ano</td>
+                <td>Grátis</td>
+              </tr>
+              <tr>
+                <th scope="row">Banco e e-mail de teste</th>
+                <td class="us">MySQL e Mailpit incluídos, também no uso grátis</td>
+                <td>MySQL, PostgreSQL, Redis e Mail ficam no plano Pro</td>
+                <td>Vários bancos incluídos (MySQL, PostgreSQL, MongoDB, Redis), além de Adminer e phpMyAdmin</td>
+                <td>Bancos e servidores incluídos</td>
+                <td>MySQL, com backups automáticos</td>
+                <td>MariaDB incluído</td>
+              </tr>
+              <tr>
+                <th scope="row">Código aberto</th>
+                <td class="us"><b>Sim</b>, licença MIT</td>
+                <td>Não informado</td>
+                <td>Não informado</td>
+                <td>Sim, BSD-3-Clause</td>
+                <td>Não informado</td>
+                <td>Sim, segundo o site oficial</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="fine" data-reveal>Informações das páginas oficiais, consultadas em 12/11/2026. Planos e preços mudam, então confira antes de decidir. "Não informado" quer dizer que não encontrei a informação nas páginas consultadas, não que a resposta seja não.
+          Fontes: <a href="https://herd.laravel.com/" rel="noopener">Laravel Herd</a>, <a href="https://www.servbay.com/pricing" rel="noopener">ServBay</a>, <a href="https://github.com/xpf0000/FlyEnv" rel="noopener">FlyEnv</a>, <a href="https://laragon.org/pricing/" rel="noopener">Laragon</a>, <a href="https://www.apachefriends.org/" rel="noopener">XAMPP</a>.</p>
+
+        <div class="who">
+          <article class="card best" data-reveal>
+            <h3>LocalTusk <span class="badge">Para quem</span></h3>
+            <p>Quer um app gratuito e aberto que junte MySQL, e-mail de teste, inspetor de API, backups e blueprints, e usa macOS.</p>
+          </article>
+          <article class="card" data-reveal>
+            <h3>Laravel Herd</h3>
+            <p>Faz mais sentido se o seu foco é Laravel e você quer a integração oficial, ou se precisa de Windows hoje. Bancos e e-mail ficam no plano pago.</p>
+          </article>
+          <article class="card" data-reveal>
+            <h3>Local (LocalWP)</h3>
+            <p>É voltado só ao WordPress. Faz mais sentido se o seu trabalho é todo em WordPress e você quer um app dedicado a isso.</p>
+          </article>
+          <article class="card" data-reveal>
+            <h3>FlyEnv, ServBay e Laragon</h3>
+            <p>Atendem melhor quem precisa de Windows ou Linux agora, de HTTPS local ou de várias linguagens além do PHP.</p>
+          </article>
+        </div>
+
+        <div class="limits" data-reveal>
+          <h3><svg class="ico"><use href="assets/img/icons.svg#i-alert"/></svg> O que o LocalTusk ainda não tem</h3>
+          <ul>
+            <li>Versões para Windows e Linux: o código compila lá, mas a instalação do MySQL e o uso completo ainda estão em desenvolvimento.</li>
+            <li>HTTPS local: hoje os sites abrem em <code class="mono">http://projeto.localhost</code>, sem certificado.</li>
+            <li>PostgreSQL, Redis e outras linguagens: por enquanto o app cobre PHP 8.x e MySQL.</li>
+            <li>Anos de estrada: é um projeto novo, com comunidade pequena.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ Código aberto -->
+    <section class="section" id="codigo-aberto" aria-labelledby="t-oss">
+      <div class="container oss">
+        <div data-reveal>
+          <span class="eyebrow">Código aberto</span>
+          <h2 id="t-oss">Livre de verdade, sob licença MIT</h2>
+          <p class="lead">Use, estude, modifique e distribua. Sem conta, sem licença para ativar e sem limite de projetos.</p>
+          <ul>
+            <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Pode usar em trabalho pessoal ou comercial.</li>
+            <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Todo o código está no GitHub, para auditar ou contribuir.</li>
+            <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Sem telemetria: o app não envia dados sobre o seu uso.</li>
+          </ul>
+          <div class="links">
+            <a class="btn btn-ghost" href="licenca/"><svg class="ico"><use href="assets/img/icons.svg#i-scale"/></svg> Ler a licença MIT</a>
+            <a class="btn btn-ghost" href="privacidade/"><svg class="ico"><use href="assets/img/icons.svg#i-eye-off"/></svg> Política de privacidade</a>
+          </div>
+        </div>
+        <div class="license-card" data-reveal aria-label="Trecho da licença MIT"><b>MIT License</b>
+
+Copyright (c) 2026 Jhonatan Machado
+
+Permission is hereby granted, free of
+charge, to any person obtaining a copy of
+this software and associated documentation
+files (the "Software"), to deal in the
+Software without restriction, including
+without limitation the rights to use, copy,
+modify, merge, publish, distribute,
+sublicense, and/or sell copies of the
+Software…</div>
+      </div>
+    </section>
+
+    <!-- ================================================================ FAQ -->
+    <section class="section" id="faq" aria-labelledby="t-faq" style="padding-top:0">
+      <div class="narrow">
+        <div class="section-head center" data-reveal>
+          <span class="eyebrow">Perguntas frequentes</span>
+          <h2 id="t-faq">Dúvidas comuns</h2>
+        </div>
+        <div class="faq" data-reveal>
+          <details>
+            <summary>Preciso do Docker? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Não. Cada projeto usa processos nativos (Caddy, PHP-FPM e MySQL), que o próprio app baixa e gerencia. Não há containers nem máquina virtual.</div>
+          </details>
+          <details>
+            <summary>Funciona no Windows e no Linux? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Hoje o app é feito e usado no macOS. O código compila e passa nos testes automáticos nos três sistemas, mas a instalação do MySQL e o uso completo no Windows e no Linux ainda estão em desenvolvimento.</div>
+          </details>
+          <details>
+            <summary>É gratuito mesmo? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Sim. É open source sob a <a href="licenca/">licença MIT</a>: você pode usar em projetos pessoais e comerciais, sem conta, sem licença para ativar e sem limite de projetos.</div>
+          </details>
+          <details>
+            <summary>Quais versões de PHP e MySQL posso usar? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Qualquer versão do PHP 8.x, instalada pelo app com binários estáticos, e MySQL 8.0, 8.4 LTS e 9.x.</div>
+          </details>
+          <details>
+            <summary>Onde ficam os meus dados? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Na pasta <code>~/LocalTusk</code> do seu computador: projetos, bancos, backups e blueprints. Para remover tudo, apague o app e essa pasta.</div>
+          </details>
+          <details>
+            <summary>O app envia dados sobre mim? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Não. Não há telemetria nem conta. O app só acessa a internet para baixar os componentes (PHP, MySQL, Caddy, Mailpit, Adminer Neo, WP-CLI e WordPress) das fontes oficiais. Os detalhes estão na <a href="privacidade/">política de privacidade</a>.</div>
+          </details>
+          <details>
+            <summary>Qual a diferença para XAMPP, Herd ou Local? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">O LocalTusk é um app só, gratuito e aberto, que reúne MySQL, e-mail de teste, inspetor de API, backups e blueprints para qualquer projeto PHP. Veja a <a href="#comparacao">comparação</a> para saber quando outra ferramenta serve melhor.</div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <!-- ================================================================ CTA -->
+    <section class="section cta-final" aria-labelledby="t-cta">
+      <div class="container">
+        <span class="eyebrow" data-reveal>Comece agora</span>
+        <h2 id="t-cta" data-reveal>Um ambiente PHP pronto em poucos minutos</h2>
+        <p class="lead" style="margin-inline:auto" data-reveal>Baixe o LocalTusk, crie o primeiro projeto e abra o site no navegador.</p>
+        <div class="hero-cta" data-reveal>
+          <a class="btn btn-primary" href="baixar/"><svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> Baixar para macOS</a>
+          <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk" rel="noopener"><svg class="ico ico-fill"><use href="assets/img/icons.svg#i-github"/></svg> Ver o código</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="foot">
+        <div>
+          <a class="brand" href="./"><img src="assets/img/favicon.svg" width="30" height="30" alt=""><span>LocalTusk</span></a>
+          <p>O melhor ambiente para desenvolver em PHP. Gratuito e open source.</p>
+        </div>
+        <nav aria-label="Produto">
+          <h4>Produto</h4>
+          <ul>
+            <li><a href="#recursos">Recursos</a></li>
+            <li><a href="#como-funciona">Como funciona</a></li>
+            <li><a href="#comparacao">Comparação</a></li>
+            <li><a href="baixar/">Baixar</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Projeto">
+          <h4>Projeto</h4>
+          <ul>
+            <li><a href="https://github.com/jhonatanMP/localtusk" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener">Versões</a></li>
+            <li><a href="https://github.com/jhonatanMP/localtusk/issues" rel="noopener">Reportar problema</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Legal">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="licenca/">Licença MIT</a></li>
+            <li><a href="privacidade/">Privacidade</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="copy">
+        <span>© 2026 Jhonatan Machado. Distribuído sob a licença MIT.</span>
+        <span>PHP, MySQL, WordPress, Laravel e os outros nomes citados são marcas de seus respectivos donos. O LocalTusk não é afiliado a eles.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="assets/vendor/gsap.min.js"></script>
+  <script src="assets/vendor/ScrollTrigger.min.js"></script>
+  <script src="assets/js/site.js"></script>
+</body>
+</html>

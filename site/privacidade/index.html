@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Política de privacidade do LocalTusk — sem telemetria</title>
+  <meta name="description" content="O LocalTusk não coleta dados, não tem conta nem telemetria. Veja o que o app e este site fazem com a rede, onde ficam seus arquivos e como apagar tudo.">
+  <link rel="canonical" href="https://jhonatanmp.github.io/localtusk/privacidade/">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#0d0e15">
+  <meta name="color-scheme" content="dark">
+  <meta property="og:type" content="article">
+  <meta property="og:site_name" content="LocalTusk">
+  <meta property="og:locale" content="pt_BR">
+  <meta property="og:title" content="Política de privacidade do LocalTusk">
+  <meta property="og:description" content="Sem conta, sem telemetria, sem rastreadores. Veja exatamente o que o app e o site fazem com a rede.">
+  <meta property="og:url" content="https://jhonatanmp.github.io/localtusk/privacidade/">
+  <meta property="og:image" content="https://jhonatanmp.github.io/localtusk/assets/img/og.png">
+  <meta name="twitter:card" content="summary_large_image">
+  <link rel="icon" href="../assets/img/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="../assets/img/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="../assets/img/apple-touch-icon.png">
+  <link rel="preload" href="../assets/fonts/ibm-plex-sans.woff2" as="font" type="font/woff2" crossorigin>
+  <script>document.documentElement.classList.add("js")</script>
+  <link rel="stylesheet" href="../assets/css/site.css">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    "itemListElement": [
+      { "@type": "ListItem", "position": 1, "name": "Início", "item": "https://jhonatanmp.github.io/localtusk/" },
+      { "@type": "ListItem", "position": 2, "name": "Privacidade", "item": "https://jhonatanmp.github.io/localtusk/privacidade/" }
+    ]
+  }
+  </script>
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Pular para o conteúdo</a>
+  <div class="progress" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="container nav">
+      <a class="brand" href="../" aria-label="LocalTusk, página inicial">
+        <img src="../assets/img/favicon.svg" width="34" height="34" alt="">
+        <span>LocalTusk</span>
+      </a>
+      <button class="menu-btn" type="button" aria-expanded="false" aria-controls="nav-links" aria-label="Abrir menu">
+        <svg class="ico"><use href="../assets/img/icons.svg#i-menu"/></svg>
+      </button>
+      <nav class="nav-links" id="nav-links" aria-label="Principal">
+        <a href="../#recursos">Recursos</a>
+        <a href="../#como-funciona">Como funciona</a>
+        <a href="../#comparacao">Comparação</a>
+        <a href="../#faq">Perguntas</a>
+        <a class="nav-gh" href="https://github.com/jhonatanMP/localtusk" rel="noopener" aria-label="Código no GitHub">
+          <svg class="ico ico-fill"><use href="../assets/img/icons.svg#i-github"/></svg>
+        </a>
+        <a class="btn btn-primary btn-sm" href="../baixar/">
+          <svg class="ico"><use href="../assets/img/icons.svg#i-download"/></svg> Baixar
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <section class="page-hero">
+      <div class="narrow">
+        <nav class="crumbs" aria-label="Você está em"><a href="../">Início</a><span aria-hidden="true">/</span><span>Privacidade</span></nav>
+        <span class="eyebrow">Privacidade</span>
+        <h1>Política de privacidade</h1>
+        <p class="lead">Resumo: o LocalTusk não coleta nenhum dado sobre você. Tudo o que você cria fica no seu computador.</p>
+        <p class="muted" style="margin-top:12px;font-size:15px">Última atualização: 12 de novembro de 2026</p>
+        <div class="toc" aria-label="Nesta página">
+          <a href="#app">O aplicativo</a>
+          <a href="#rede">Uso da internet</a>
+          <a href="#dados">Seus dados</a>
+          <a href="#site">Este site</a>
+          <a href="#contato">Contato</a>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" style="padding-top:8px">
+      <div class="narrow prose">
+        <h2 id="app">O aplicativo</h2>
+        <ul class="list">
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Não existe conta, login ou cadastro.</b></span></li>
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Não há telemetria, análise de uso, relatório de falhas nem rastreadores.</b> O app não envia informações sobre você, o seu computador ou os seus projetos.</span></li>
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Os serviços ficam só na sua máquina.</b> Servidor web, PHP, MySQL e Mailpit escutam apenas no endereço local (<code>127.0.0.1</code>), então não ficam expostos à sua rede.</span></li>
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Os e-mails de teste não saem do computador.</b> O Mailpit só captura as mensagens enviadas pelos seus projetos.</span></li>
+        </ul>
+        <p>Como o código é aberto, você pode conferir tudo isso no <a href="https://github.com/jhonatanMP/localtusk" rel="noopener">repositório</a>.</p>
+
+        <h2 id="rede">Quando o app usa a internet</h2>
+        <p>O app só acessa a rede para baixar os componentes que você pede para instalar, e consulta a versão mais recente de alguns deles. Isso acontece direto entre o seu computador e as fontes abaixo, sem passar por servidores do LocalTusk.</p>
+        <div class="table-scroll">
+          <table class="simple-table">
+            <caption class="sr">Servidores que o app contata e para quê</caption>
+            <thead><tr><th scope="col">Para quê</th><th scope="col">Servidor</th></tr></thead>
+            <tbody>
+              <tr><td>PHP</td><td><code>dl.static-php.dev</code></td></tr>
+              <tr><td>MySQL</td><td><code>cdn.mysql.com</code></td></tr>
+              <tr><td>Caddy, Mailpit e WP-CLI</td><td><code>api.github.com</code> e <code>github.com</code></td></tr>
+              <tr><td>Adminer Neo</td><td><code>www.adminneo.org</code></td></tr>
+              <tr><td>WordPress (quando você cria um site)</td><td><code>wordpress.org</code>, pelo WP-CLI</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Esses servidores recebem o seu endereço IP, como em qualquer download, e têm as próprias políticas de privacidade. Além disso, o cliente de API do app envia as requisições que <em>você</em> configurar, para os endereços que <em>você</em> escolher.</p>
+
+        <h2 id="dados">Onde ficam os seus dados</h2>
+        <p>Projetos, bancos de dados, backups, blueprints, coleções de API e configurações ficam na pasta <code>~/LocalTusk</code> do seu computador. Nada disso é enviado a lugar nenhum.</p>
+        <p>Para apagar tudo, feche o app, mova-o para a Lixeira e remova a pasta <code>~/LocalTusk</code>. Os backups e blueprints que você compartilhar como arquivo ficam sob o seu controle: quem os receber terá o conteúdo, inclusive o banco de dados que estiver dentro, então não compartilhe dados sensíveis.</p>
+
+        <h2 id="site">Este site</h2>
+        <ul class="list">
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Sem cookies, sem Google Analytics e sem pixels de anúncio.</b></span></li>
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Fontes e scripts são servidos pelo próprio site</b>, sem pedir nada a redes de distribuição de terceiros.</span></li>
+          <li><svg class="ico warn"><use href="../assets/img/icons.svg#i-info"/></svg><span>O site é hospedado no <b>GitHub Pages</b>, que pode registrar dados técnicos de acesso, como o endereço IP, conforme a <a href="https://docs.github.com/pt/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener">política do GitHub</a>.</span></li>
+          <li><svg class="ico warn"><use href="../assets/img/icons.svg#i-info"/></svg><span>A <a href="../baixar/">página de download</a> consulta a API pública do GitHub para mostrar a versão mais recente. Esse pedido vai direto do seu navegador ao GitHub.</span></li>
+        </ul>
+
+        <h2 id="contato">Contato e mudanças</h2>
+        <p>Dúvidas ou pedidos sobre privacidade: abra uma <a href="https://github.com/jhonatanMP/localtusk/issues" rel="noopener">issue no GitHub</a>. Se esta política mudar, a data no topo da página será atualizada e o histórico fica registrado no repositório.</p>
+        <p>O LocalTusk é distribuído sob a <a href="../licenca/">licença MIT</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container">
+      <div class="foot">
+        <div>
+          <a class="brand" href="../"><img src="../assets/img/favicon.svg" width="30" height="30" alt=""><span>LocalTusk</span></a>
+          <p>O melhor ambiente para desenvolver em PHP. Gratuito e open source.</p>
+        </div>
+        <nav aria-label="Produto">
+          <h4>Produto</h4>
+          <ul>
+            <li><a href="../#recursos">Recursos</a></li>
+            <li><a href="../#como-funciona">Como funciona</a></li>
+            <li><a href="../#comparacao">Comparação</a></li>
+            <li><a href="../baixar/">Baixar</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Projeto">
+          <h4>Projeto</h4>
+          <ul>
+            <li><a href="https://github.com/jhonatanMP/localtusk" rel="noopener">GitHub</a></li>
+            <li><a href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener">Versões</a></li>
+            <li><a href="https://github.com/jhonatanMP/localtusk/issues" rel="noopener">Reportar problema</a></li>
+          </ul>
+        </nav>
+        <nav aria-label="Legal">
+          <h4>Legal</h4>
+          <ul>
+            <li><a href="../licenca/">Licença MIT</a></li>
+            <li><a href="./">Privacidade</a></li>
+          </ul>
+        </nav>
+      </div>
+      <div class="copy">
+        <span>© 2026 Jhonatan Machado. Distribuído sob a licença MIT.</span>
+        <span>PHP, MySQL, WordPress, Laravel e os outros nomes citados são marcas de seus respectivos donos. O LocalTusk não é afiliado a eles.</span>
+      </div>
+    </div>
+  </footer>
+
+  <script src="../assets/vendor/gsap.min.js"></script>
+  <script src="../assets/vendor/ScrollTrigger.min.js"></script>
+  <script src="../assets/js/site.js"></script>
+</body>
+</html>
