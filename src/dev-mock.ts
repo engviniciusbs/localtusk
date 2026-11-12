@@ -3,10 +3,12 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 
 const projects = [
-  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true },
-  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true },
-  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false },
+  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", httpUrl: "http://loja-virtual.localhost:8000", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true },
+  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", httpUrl: "http://blog-wp.localhost:8001", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true },
+  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", httpUrl: "http://api-legada.localhost:8002", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false },
 ];
+
+let sslTrusted = false;
 
 const phps = ["8.4.9", "8.3.32", "8.1.33"].map((v) => ({ fullVersion: v, version: v.split(".").slice(0, 2).join("."), fpm: `/x/${v}/php-fpm`, managed: true }));
 const mysqls = [{ fullVersion: "8.4.13", series: "8.4", mysqld: "/x/mysqld", managed: true }];
@@ -53,6 +55,10 @@ const logs = `[10/Nov/2026:17:02:11] GET / 200 14ms
 const slow = new URLSearchParams(location.search).has("slow");
 const later = <T>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), slow ? 9000 : 0));
 
+function lanUrlsFor(p: (typeof projects)[number]) {
+  return ["192.168.0.23", "meu-mac.local"].flatMap((h) => [`http://${h}:${p.httpPort}`, ...(p.https ? [`https://${h}:${p.httpsPort}`] : [])]);
+}
+
 export function installDevMock() {
   mockIPC(
     (cmd, args) => {
@@ -98,6 +104,28 @@ export function installDevMock() {
         case "php_catalog": return phpCatalog;
         case "mysql_catalog": return mysqlCatalog;
         case "read_log": return logs;
+        case "ssl_status": return { caReady: sslTrusted || projects.some((x) => x.https), trusted: sslTrusted, caPath: "/Users/dev/LocalTusk/ssl/caddy/pki/authorities/local/root.crt", canTrust: true };
+        case "trust_certificate": {
+          // Com "?cancelar" na URL, simula a pessoa cancelando o pedido de senha do macOS.
+          if (new URLSearchParams(location.search).has("cancelar")) return Promise.reject("Autorização cancelada. O HTTPS continua ligado, mas o navegador vai avisar que o certificado não é confiável.");
+          sslTrusted = true;
+          return { caReady: true, trusted: true, caPath: "/Users/dev/LocalTusk/ssl/caddy/pki/authorities/local/root.crt", canTrust: true };
+        }
+        case "reveal_ca": return null;
+        case "set_https": {
+          const p = projects.find((x) => x.id === a.id)!;
+          p.https = a.enabled as boolean;
+          if (p.https && !p.httpsPort) p.httpsPort = 8443 + projects.indexOf(p);
+          p.url = p.https ? `https://${p.id}.localhost:${p.httpsPort}` : p.httpUrl;
+          p.lanUrls = p.lan ? lanUrlsFor(p) : [];
+          return later(p);
+        }
+        case "set_lan": {
+          const p = projects.find((x) => x.id === a.id)!;
+          p.lan = a.enabled as boolean;
+          p.lanUrls = p.lan ? lanUrlsFor(p) : [];
+          return later(p);
+        }
         case "start_project":
         case "stop_project": {
           const p = projects.find((x) => x.id === a.id)!;

@@ -8,6 +8,7 @@ mod mysql_manager;
 mod php_manager;
 mod project;
 mod runtime;
+mod ssl;
 mod tools;
 mod wp;
 
@@ -49,6 +50,11 @@ pub fn run() {
             commands::stop_project,
             commands::delete_project,
             commands::set_php_version,
+            commands::set_https,
+            commands::set_lan,
+            commands::ssl_status,
+            commands::trust_certificate,
+            commands::reveal_ca,
             commands::open_site,
             commands::open_folder,
             commands::read_log,

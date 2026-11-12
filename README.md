@@ -23,7 +23,9 @@ Cada projeto roda com processos nativos isolados: **Caddy** (web) + **PHP-FPM** 
 - [x] Mailpit: `mail()` e SMTP do PHP caem numa caixa de e-mails de teste por projeto
 - [x] Logs ao vivo (acesso, erros do PHP, MySQL, Mailpit, Caddy)
 - [x] Domínio por projeto: `<nome-do-projeto>.localhost:<porta>` (funciona sem configurar nada nem pedir senha)
-- [ ] Domínios `.test` com HTTPS e sem porta (opcional, exige configuração única com senha de administrador)
+- [x] **HTTPS** por projeto com um interruptor: o Caddy cria uma autoridade local e o app a instala como confiável no macOS (pede a senha uma vez); o site abre em `https://<nome>.localhost:<porta>` com cadeado
+- [x] **Acessível na rede**: ligue para abrir o site em outros aparelhos da mesma rede (IP e nome `.local`); só o site é exposto, banco, Adminer Neo e Mailpit continuam locais. Para HTTPS sem aviso em outro aparelho, instale nele o certificado raiz (o app mostra o arquivo)
+- [ ] Domínios `.test` sem porta (opcional, exige configuração única com senha de administrador)
 - [ ] Git integrado
 - [ ] Download do MySQL no Linux e no Windows (hoje só macOS)
 - [x] Backup e restauração de projetos (arquivos + banco) em `~/LocalTusk/backups`

@@ -30,6 +30,44 @@ pub fn is_wordpress(base: &Path, p: &Project) -> bool {
     runtime::docroot_dir(base, p).join("wp-includes").join("version.php").is_file()
 }
 
+/// Arquivo que guarda o endereço do site que o WordPress tem gravado no banco, para
+/// detectar quando o projeto passa de HTTP para HTTPS (ou o contrário).
+fn url_marker(base: &Path, p: &Project) -> PathBuf {
+    conf_dir(base, p).join("site-url")
+}
+
+/// Guarda o endereço atual, se ainda não houver um guardado. Chamado antes de mudar de
+/// HTTP para HTTPS, para a mudança ser notada na próxima inicialização.
+pub fn remember_site_url(base: &Path, p: &Project) {
+    let marker = url_marker(base, p);
+    if is_wordpress(base, p) && !marker.is_file() {
+        let _ = fs::create_dir_all(conf_dir(base, p));
+        let _ = fs::write(marker, project::site_url(p));
+    }
+}
+
+/// Com o projeto rodando: se o endereço do site mudou (HTTP <-> HTTPS) desde que o
+/// WordPress foi configurado, troca o endereço antigo pelo novo no banco.
+pub fn sync_site_url(base: &Path, p: &Project, progress: &dyn Fn(InstallProgress)) -> Result<(), String> {
+    if !is_wordpress(base, p) {
+        return Ok(());
+    }
+    let marker = url_marker(base, p);
+    let want = project::site_url(p);
+    match fs::read_to_string(&marker) {
+        Ok(saved) if saved.trim() == want => Ok(()),
+        Ok(_) => {
+            retarget(base, p, progress)?;
+            fs::write(&marker, want).map_err(|e| e.to_string())
+        }
+        Err(_) => {
+            // Projeto anterior a este controle: o banco está com o endereço de agora.
+            let _ = fs::create_dir_all(conf_dir(base, p));
+            fs::write(&marker, want).map_err(|e| e.to_string())
+        }
+    }
+}
+
 /// Depois de restaurar um backup num projeto com outro banco/porta/domínio: aponta o
 /// `wp-config.php` para o banco deste projeto e troca o endereço antigo do site pelo atual.
 pub fn retarget(base: &Path, p: &Project, progress: &dyn Fn(InstallProgress)) -> Result<(), String> {
@@ -521,6 +559,7 @@ mod tests {
             db_port: 13999,
             db_name: id.into(),
             created_at: 0,
+            ..Default::default()
         }
     }
 

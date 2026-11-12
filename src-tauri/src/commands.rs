@@ -7,6 +7,7 @@ use crate::mysql_manager::{self, MysqlInstall, MysqlRelease};
 use crate::php_manager::{self, PhpRelease};
 use crate::project::{self, DB_PASSWORD, DB_USER, Project, resolve_base};
 use crate::runtime::{self, Running};
+use crate::ssl;
 use crate::tools::{self, PhpInstall, ToolStatus};
 use crate::wp::{self, WpOptions};
 use serde::Serialize;
@@ -76,6 +77,11 @@ impl AppState {
             db_user: DB_USER.into(),
             db_password: DB_PASSWORD.into(),
             url: project::site_url(p),
+            http_url: project::http_url(p),
+            https: project::https_on(p),
+            https_port: p.https_port,
+            lan: p.lan,
+            lan_urls: project::lan_urls(p),
             path: project::project_dir(&self.base, &p.id).display().to_string(),
             running: alive,
             busy,
@@ -134,7 +140,15 @@ pub struct ProjectView {
     db_name: String,
     db_user: String,
     db_password: String,
+    /// Endereço principal (HTTPS quando ligado).
     url: String,
+    http_url: String,
+    https: bool,
+    https_port: u16,
+    /// Aceita conexões de outros aparelhos da rede.
+    lan: bool,
+    /// Endereços para abrir de outros aparelhos (vazio se desligado ou sem rede).
+    lan_urls: Vec<String>,
     path: String,
     running: bool,
     busy: bool,
@@ -206,6 +220,7 @@ pub fn create_project(
         http_port,
         db_port,
         created_at: project::now(),
+        ..Default::default()
     };
     runtime::scaffold(&state.base, &p)?;
     projects.push(p.clone());
@@ -230,18 +245,24 @@ fn start_blocking(state: &AppState, id: &str) -> Result<ProjectView, String> {
         .unwrap()
         .iter()
         .filter(|o| o.id != p.id)
-        .flat_map(|o| [o.http_port, o.db_port])
+        .flat_map(|o| [o.http_port, o.db_port, o.https_port])
         .collect();
     if !project::port_is_free(p.http_port) {
         let mut r = others.clone();
-        r.insert(p.db_port);
+        r.extend([p.db_port, p.https_port]);
         p.http_port = project::free_port(8000, &r).ok_or("sem portas HTTP livres")?;
         changed = true;
     }
     if !project::port_is_free(p.db_port) {
-        let mut r = others;
-        r.insert(p.http_port);
+        let mut r = others.clone();
+        r.extend([p.http_port, p.https_port]);
         p.db_port = project::free_port(3307, &r).ok_or("sem portas de banco livres")?;
+        changed = true;
+    }
+    if project::https_on(&p) && !project::port_is_free(p.https_port) {
+        let mut r = others;
+        r.extend([p.http_port, p.db_port]);
+        p.https_port = project::free_port(8443, &r).ok_or("sem portas HTTPS livres")?;
         changed = true;
     }
     if changed {
@@ -254,8 +275,106 @@ fn start_blocking(state: &AppState, id: &str) -> Result<ProjectView, String> {
 
     let running = runtime::start(&state.base, &p)?;
     state.running.lock().unwrap().insert(id.to_string(), running);
+    // Mudou entre HTTP e HTTPS com um WordPress instalado: acerta o endereço gravado no banco.
+    // Se falhar, o site continua de pé e a tentativa se repete na próxima vez que iniciar.
+    if let Err(e) = wp::sync_site_url(&state.base, &p, &|_| {}) {
+        eprintln!("wp: não foi possível atualizar o endereço do site: {e}");
+    }
     drop(guard);
     Ok(state.view(&p))
+}
+
+/// Altera uma opção de acesso do projeto (HTTPS, rede) e, se ele estiver rodando,
+/// reinicia para o Caddy ler a configuração nova.
+fn change_access(
+    state: &AppState,
+    id: &str,
+    change: impl FnOnce(&mut Project, &HashSet<u16>) -> Result<(), String>,
+) -> Result<ProjectView, String> {
+    let was_running = state.running.lock().unwrap().contains_key(id);
+    {
+        let guard = state.begin(id)?;
+        let mut projects = state.projects.lock().unwrap();
+        let reserved = project::reserved_ports(&projects);
+        let slot = projects.iter_mut().find(|p| p.id == id).ok_or("projeto não encontrado")?;
+        // Guarda o endereço atual para poder trocá-lo no WordPress depois.
+        wp::remember_site_url(&state.base, slot);
+        change(slot, &reserved)?;
+        project::save(&state.base, &projects)?;
+        drop(projects);
+        if was_running {
+            let taken = state.running.lock().unwrap().remove(id);
+            if let Some(mut r) = taken {
+                runtime::stop(&mut r);
+            }
+        }
+        drop(guard);
+    }
+    if was_running {
+        start_blocking(state, id)
+    } else {
+        let p = state.find(id)?;
+        Ok(state.view(&p))
+    }
+}
+
+/// Liga ou desliga o HTTPS do projeto. Ao ligar, reserva uma porta HTTPS.
+#[tauri::command]
+pub async fn set_https(state: State<'_, AppState>, id: String, enabled: bool) -> Result<ProjectView, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        change_access(&state, &id, |p, reserved| {
+            if enabled && p.https_port == 0 {
+                p.https_port = project::free_port(8443, reserved).ok_or("sem portas HTTPS livres")?;
+            }
+            p.https = enabled;
+            Ok(())
+        })
+    })
+    .await
+}
+
+/// Liga ou desliga o acesso ao projeto por outros aparelhos da rede local.
+#[tauri::command]
+pub async fn set_lan(state: State<'_, AppState>, id: String, enabled: bool) -> Result<ProjectView, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        change_access(&state, &id, |p, _| {
+            p.lan = enabled;
+            Ok(())
+        })
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn ssl_status(state: State<'_, AppState>) -> Result<ssl::SslStatus, String> {
+    let base = state.base.clone();
+    blocking(move || Ok(ssl::status(&base))).await
+}
+
+/// Faz o sistema confiar na CA do HTTPS local (pede a senha de administrador no macOS).
+#[tauri::command]
+pub async fn trust_certificate(state: State<'_, AppState>) -> Result<ssl::SslStatus, String> {
+    let base = state.base.clone();
+    blocking(move || {
+        let caddy = extras::caddy_bin(&base)
+            .or_else(|| tools::find("caddy", &base))
+            .ok_or("Caddy não encontrado. Instale em \"PHP e ferramentas\".")?;
+        ssl::trust(&base, &caddy)?;
+        Ok(ssl::status(&base))
+    })
+    .await
+}
+
+/// Mostra o certificado raiz no Finder (para instalar em outros aparelhos).
+#[tauri::command]
+pub fn reveal_ca(app: AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let root = ssl::root_cert(&state.base);
+    if !root.is_file() {
+        return Err("O certificado ainda não foi criado. Ative o HTTPS primeiro.".into());
+    }
+    app.opener().reveal_item_in_dir(root).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -806,6 +925,7 @@ fn project_from_manifest(state: &AppState, m: &backup::Manifest, new_name: Optio
         http_port,
         db_port,
         created_at: project::now(),
+        ..Default::default()
     };
     runtime::scaffold(&state.base, &p)?;
     projects.push(p.clone());

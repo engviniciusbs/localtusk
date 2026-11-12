@@ -206,6 +206,18 @@
             <p>Salve um projeto pronto (arquivos, banco e versões) como modelo e crie novos já configurados. Dá para compartilhar o blueprint como arquivo.</p>
           </article>
 
+          <article class="card c-3" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-shield"/></svg></span>
+            <h3>HTTPS com um clique</h3>
+            <p>Ligue o HTTPS no projeto e o app cria um certificado local e pede, uma vez, a sua autorização para o sistema confiar nele. O site abre em <code class="mono">https://projeto.localhost</code>, com cadeado.</p>
+          </article>
+
+          <article class="card c-3" data-reveal>
+            <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-wifi"/></svg></span>
+            <h3>Acesso pela rede</h3>
+            <p>Abra o site no celular ou em outro computador da mesma rede, por endereço IP ou pelo nome <code class="mono">.local</code>. Só o site fica aberto: banco, Adminer Neo e Mailpit continuam só no seu computador.</p>
+          </article>
+
         </div>
       </div>
     </section>
@@ -388,7 +400,7 @@
           </article>
           <article class="card" data-reveal>
             <h3>FlyEnv, ServBay e Laragon</h3>
-            <p>Atendem melhor quem precisa de Windows ou Linux agora, de HTTPS local ou de várias linguagens além do PHP.</p>
+            <p>Atendem melhor quem precisa de Windows ou Linux agora ou de várias linguagens além do PHP.</p>
           </article>
         </div>
 
@@ -396,7 +408,7 @@
           <h3><svg class="ico"><use href="assets/img/icons.svg#i-alert"/></svg> O que o LocalTusk ainda não tem</h3>
           <ul>
             <li>Versões para Windows e Linux: o código compila lá, mas a instalação do MySQL e o uso completo ainda estão em desenvolvimento.</li>
-            <li>HTTPS local: hoje os sites abrem em <code class="mono">http://projeto.localhost</code>, sem certificado.</li>
+            <li>Domínios <code class="mono">.test</code> sem porta: hoje cada site abre em <code class="mono">projeto.localhost:porta</code>.</li>
             <li>PostgreSQL, Redis e outras linguagens: por enquanto o app cobre PHP 8.x e MySQL.</li>
             <li>Anos de estrada: é um projeto novo, com comunidade pequena.</li>
           </ul>

@@ -610,3 +610,27 @@ h1, h2, h3 { text-wrap: balance; }
 .skeleton-stack { display: flex; flex-direction: column; gap: 8px; }
 
 .spinner { animation: spin 0.8s linear infinite; }
+
+/* ---------------------------------------------------------------- Acesso ao site (HTTPS e rede) */
+
+.switch {
+  position: relative; flex: none; width: 40px; height: 22px; padding: 0;
+  border-radius: 999px; border: 1px solid var(--line); background: var(--surface-3);
+  transition: background 0.2s, border-color 0.2s;
+}
+.switch .knob {
+  position: absolute; top: 2px; left: 2px; width: 16px; height: 16px; border-radius: 50%;
+  background: var(--muted); transition: transform 0.2s var(--ease, ease), background 0.2s;
+}
+.switch.on { background: var(--php-purple); border-color: var(--php-purple); }
+.switch.on .knob { transform: translateX(18px); background: #fff; }
+.switch:disabled { opacity: 0.55; cursor: progress; }
+.switch:focus-visible { outline: 2px solid var(--php-light-purple); outline-offset: 2px; }
+
+.access-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 28px; }
+.access-item { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.access-head { display: flex; align-items: center; gap: 12px; }
+.access-body { display: flex; flex-direction: column; gap: 8px; padding-left: 46px; min-width: 0; }
+.trust-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.ok-text { color: var(--green); display: flex; align-items: center; gap: 6px; }
+@media (max-width: 900px) { .access-grid { grid-template-columns: minmax(0, 1fr); } }

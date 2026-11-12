@@ -9,7 +9,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub const DB_USER: &str = "root";
 pub const DB_PASSWORD: &str = "root";
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     /// Slug único; também é o nome da pasta do projeto.
@@ -26,6 +26,15 @@ pub struct Project {
     pub db_port: u16,
     pub db_name: String,
     pub created_at: u64,
+    /// Também serve o site por HTTPS (certificado da autoridade local do Caddy).
+    #[serde(default)]
+    pub https: bool,
+    /// Porta HTTPS do projeto. 0 = ainda não reservada.
+    #[serde(default)]
+    pub https_port: u16,
+    /// Aceita conexões de outros aparelhos da mesma rede (por padrão, só deste computador).
+    #[serde(default)]
+    pub lan: bool,
 }
 
 pub fn project_dir(base: &Path, id: &str) -> PathBuf {
@@ -71,9 +80,77 @@ pub fn site_host(p: &Project) -> String {
     format!("{}.localhost", p.id)
 }
 
-/// Endereço do site: `http://<id>.localhost:<porta>`.
-pub fn site_url(p: &Project) -> String {
+/// Endereço HTTP do site: `http://<id>.localhost:<porta>`.
+pub fn http_url(p: &Project) -> String {
     format!("http://{}:{}", site_host(p), p.http_port)
+}
+
+/// O projeto serve HTTPS de fato (ligado e com porta reservada).
+pub fn https_on(p: &Project) -> bool {
+    p.https && p.https_port != 0
+}
+
+/// Endereço principal do site: HTTPS quando está ligado, senão HTTP. É o que o WordPress
+/// grava como endereço do site e o que o botão "Abrir site" abre.
+pub fn site_url(p: &Project) -> String {
+    if https_on(p) {
+        format!("https://{}:{}", site_host(p), p.https_port)
+    } else {
+        http_url(p)
+    }
+}
+
+/// IP deste computador na rede local. Abre um socket UDP "para" um endereço de
+/// documentação só para o sistema escolher a interface: nenhum pacote é enviado.
+pub fn lan_ip() -> Option<Ipv4Addr> {
+    let sock = std::net::UdpSocket::bind((Ipv4Addr::UNSPECIFIED, 0)).ok()?;
+    sock.connect((Ipv4Addr::new(192, 0, 2, 1), 9)).ok()?;
+    match sock.local_addr().ok()?.ip() {
+        std::net::IpAddr::V4(ip) if !ip.is_loopback() && !ip.is_unspecified() => Some(ip),
+        _ => None,
+    }
+}
+
+/// Nome deste computador na rede (`MeuMac.local`), resolvido por mDNS/Bonjour.
+/// Só no macOS; nos outros sistemas devolve `None`.
+pub fn lan_hostname() -> Option<String> {
+    static NAME: std::sync::OnceLock<Option<String>> = std::sync::OnceLock::new();
+    NAME.get_or_init(|| {
+        #[cfg(target_os = "macos")]
+        {
+            let out = std::process::Command::new("scutil").args(["--get", "LocalHostName"]).output().ok()?;
+            let name = String::from_utf8_lossy(&out.stdout).trim().to_string();
+            (out.status.success() && !name.is_empty()).then(|| format!("{name}.local"))
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            None
+        }
+    })
+    .clone()
+}
+
+/// Nomes pelos quais outros aparelhos alcançam este computador (IP e nome `.local`).
+pub fn lan_hosts() -> Vec<String> {
+    lan_ip().map(|ip| ip.to_string()).into_iter().chain(lan_hostname()).collect()
+}
+
+/// Endereços do projeto na rede local (HTTP e, se ligado, HTTPS). Vazio se o acesso
+/// pela rede estiver desligado ou se o computador não estiver em nenhuma rede.
+pub fn lan_urls(p: &Project) -> Vec<String> {
+    if !p.lan {
+        return vec![];
+    }
+    lan_hosts()
+        .iter()
+        .flat_map(|h| {
+            let mut v = vec![format!("http://{h}:{}", p.http_port)];
+            if https_on(p) {
+                v.push(format!("https://{h}:{}", p.https_port));
+            }
+            v
+        })
+        .collect()
 }
 
 pub fn unique_id(name: &str, existing: &[Project]) -> String {
@@ -123,7 +200,8 @@ pub fn now() -> u64 {
 pub fn reserved_ports(projects: &[Project]) -> HashSet<u16> {
     projects
         .iter()
-        .flat_map(|p| [p.http_port, p.db_port])
+        .flat_map(|p| [p.http_port, p.db_port, p.https_port])
+        .filter(|port| *port != 0)
         .collect()
 }
 
@@ -184,5 +262,52 @@ mod tests {
         assert_eq!(resolve_base(&home), home.join("LocalTusk"));
         assert!(!home.join("LocalPHP").exists());
         let _ = std::fs::remove_dir_all(&home);
+    }
+
+    fn sample() -> Project {
+        Project { id: "loja".into(), http_port: 8000, db_port: 3307, ..Default::default() }
+    }
+
+    #[test]
+    fn projetos_antigos_sem_campos_de_https_e_rede_continuam_carregando() {
+        let old = r#"[{"id":"loja","name":"Loja","docroot":"","phpVersion":"","httpPort":8000,"dbPort":3307,"dbName":"loja","createdAt":1}]"#;
+        let list: Vec<Project> = serde_json::from_str(old).unwrap();
+        assert!(!list[0].https && !list[0].lan && list[0].https_port == 0);
+        assert_eq!(site_url(&list[0]), "http://loja.localhost:8000");
+    }
+
+    #[test]
+    fn endereco_principal_vira_https_so_com_porta_reservada() {
+        let mut p = sample();
+        p.https = true;
+        assert_eq!(site_url(&p), "http://loja.localhost:8000", "sem porta, continua HTTP");
+        p.https_port = 8443;
+        assert_eq!(site_url(&p), "https://loja.localhost:8443");
+        assert_eq!(http_url(&p), "http://loja.localhost:8000");
+        p.https = false;
+        assert_eq!(site_url(&p), "http://loja.localhost:8000");
+    }
+
+    #[test]
+    fn portas_https_entram_nas_reservadas_e_zero_e_ignorado() {
+        let mut a = sample();
+        a.https_port = 8443;
+        let b = Project { id: "b".into(), http_port: 8001, db_port: 3308, ..Default::default() };
+        let r = reserved_ports(&[a, b]);
+        assert!(r.contains(&8443) && r.contains(&8000) && r.contains(&3308));
+        assert!(!r.contains(&0));
+    }
+
+    #[test]
+    fn enderecos_da_rede_so_aparecem_com_a_rede_ligada() {
+        let mut p = sample();
+        assert!(lan_urls(&p).is_empty());
+        p.lan = true;
+        p.https = true;
+        p.https_port = 8443;
+        for u in lan_urls(&p) {
+            assert!(u.starts_with("http://") && u.ends_with(":8000") || u.starts_with("https://") && u.ends_with(":8443"), "{u}");
+            assert!(!u.contains("localhost") && !u.contains("127.0.0.1"), "{u}");
+        }
     }
 }

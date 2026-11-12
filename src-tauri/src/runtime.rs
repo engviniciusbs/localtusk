@@ -266,13 +266,47 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
     )?;
 
     // --- Caddy ---
-    let mut caddyfile = format!(
-        "{{\n\
-         \tadmin off\n\
-         \tauto_https off\n\
-         }}\n\n\
-         :{port} {{\n\
-         \tbind 127.0.0.1\n\
+    let caddyfile = render_caddyfile(
+        p,
+        &q(&l.docroot(p)),
+        &q(&l.logs),
+        fpm_port,
+        x.admin_port.map(|port| (port, q(&x.tools_dir))),
+        &project::lan_hosts(),
+    );
+    write(&l.conf.join("Caddyfile"), caddyfile)
+}
+
+/// Caddyfile do projeto.
+///
+/// - HTTP em `:<porta>` (aceita qualquer nome de host, então também serve o IP da rede).
+/// - Com HTTPS ligado, uma segunda porta com `tls internal` (certificado da CA local) para
+///   `<id>.localhost`, `127.0.0.1` e, com a rede ligada, o IP e o nome `.local` do computador.
+/// - Só escuta em `127.0.0.1`, a menos que o acesso pela rede esteja ligado (`0.0.0.0`).
+/// - O Adminer Neo (`admin`) fica sempre só em `127.0.0.1`.
+fn render_caddyfile(
+    p: &Project,
+    docroot: &str,
+    logs: &str,
+    fpm: u16,
+    admin: Option<(u16, String)>,
+    lan_hosts: &[String],
+) -> String {
+    let https = project::https_on(p);
+    let bind = if p.lan { "0.0.0.0" } else { "127.0.0.1" };
+
+    let mut out = String::from("{\n\tadmin off\n");
+    if https {
+        // Mantém a emissão de certificados, mas sem redirecionar HTTP -> HTTPS (a porta 80
+        // não é usada) e sem tentar instalar a CA sozinho: isso é um botão do app.
+        out.push_str("\tauto_https disable_redirects\n\tskip_install_trust\n");
+    } else {
+        out.push_str("\tauto_https off\n");
+    }
+    out.push_str("}\n\n");
+
+    out.push_str(&format!(
+        "(app) {{\n\
          \troot * \"{docroot}\"\n\
          \tencode gzip\n\
          \tphp_fastcgi 127.0.0.1:{fpm}\n\
@@ -280,17 +314,35 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
          \tlog {{\n\
          \t\toutput file \"{logs}/access.log\"\n\
          \t}}\n\
+         }}\n\n\
+         :{port} {{\n\
+         \tbind {bind}\n\
+         \timport app\n\
          }}\n",
         port = p.http_port,
-        docroot = q(&l.docroot(p)),
-        fpm = fpm_port,
-        logs = q(&l.logs),
-    );
+    ));
+
+    if https {
+        let mut hosts = vec![project::site_host(p), "127.0.0.1".to_string()];
+        if p.lan {
+            hosts.extend(lan_hosts.iter().cloned());
+        }
+        let addrs: Vec<String> = hosts.iter().map(|h| format!("https://{h}:{}", p.https_port)).collect();
+        out.push_str(&format!(
+            "\n{addrs} {{\n\
+             \tbind {bind}\n\
+             \ttls internal\n\
+             \timport app\n\
+             }}\n",
+            addrs = addrs.join(", "),
+        ));
+    }
+
     // Site de administração do banco: a raiz é a pasta das ferramentas, então
     // /adminneo/ aponta direto para a pasta (sem reescrever URLs).
-    if let Some(admin) = x.admin_port {
-        caddyfile.push_str(&format!(
-            "\n:{admin} {{\n\
+    if let Some((port, tools)) = admin {
+        out.push_str(&format!(
+            "\n:{port} {{\n\
              \tbind 127.0.0.1\n\
              \troot * \"{tools}\"\n\
              \t@allowed path /adminneo/*\n\
@@ -302,11 +354,9 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
              \t}}\n\
              \trespond \"Not found\" 404\n\
              }}\n",
-            tools = q(&x.tools_dir),
-            fpm = fpm_port,
         ));
     }
-    write(&l.conf.join("Caddyfile"), caddyfile)
+    out
 }
 
 fn log_file(l: &Layout, name: &str) -> Result<File, String> {
@@ -406,6 +456,7 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
     reap_orphans(base, &p.id);
     let l = Layout::new(base, p);
     scaffold(base, p)?;
+    fs::create_dir_all(crate::ssl::data_home(base)).map_err(|e| e.to_string())?;
 
     let php = tools::pick_php(base, &p.php_version)
         .ok_or("PHP não encontrado. Instale uma versão em \"PHP e ferramentas\".")?;
@@ -487,7 +538,8 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
             .arg(l.conf.join("Caddyfile"))
             .arg("--adapter")
             .arg("caddyfile")
-            .env("XDG_DATA_HOME", &l.run)
+            // Dados do Caddy (a CA do HTTPS) compartilhados entre os projetos.
+            .env("XDG_DATA_HOME", crate::ssl::data_home(base))
             .env("XDG_CONFIG_HOME", &l.run);
         running.services.push(Service {
             name: "Caddy",
@@ -498,6 +550,9 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
         wait_port(p.db_port, Duration::from_secs(90), &mut running, &l.logs, "MySQL")?;
         wait_port(fpm_port, Duration::from_secs(20), &mut running, &l.logs, "PHP-FPM")?;
         wait_port(p.http_port, Duration::from_secs(20), &mut running, &l.logs, "Caddy")?;
+        if project::https_on(p) {
+            wait_port(p.https_port, Duration::from_secs(20), &mut running, &l.logs, "Caddy")?;
+        }
         if let Some(port) = x.admin_port {
             wait_port(port, Duration::from_secs(20), &mut running, &l.logs, "Caddy")?;
         }
@@ -725,6 +780,7 @@ mod tests {
             db_port: db,
             db_name: "teste".into(),
             created_at: 0,
+            ..Default::default()
         };
         let mut running = start(&base, &p).expect("start falhou");
         assert!(running.is_alive());
@@ -757,6 +813,7 @@ mod tests {
             db_port: db,
             db_name: "api".into(),
             created_at: 0,
+            ..Default::default()
         };
         scaffold(&base, &p).unwrap();
         fs::create_dir_all(docroot_dir(&base, &p)).unwrap();
@@ -868,6 +925,7 @@ mod tests {
             db_port: db,
             db_name: "velho".into(),
             created_at: 0,
+            ..Default::default()
         };
         let mut running = start(&base, &p).expect("start falhou");
         let body = http_get(http);
@@ -909,6 +967,7 @@ mod tests {
             db_port: db,
             db_name: "extras".into(),
             created_at: 0,
+            ..Default::default()
         };
         let mut running = start(&base, &p).expect("start falhou");
         let info = running.info.clone();
@@ -1054,6 +1113,7 @@ mod tests {
             db_port: db,
             db_name: "stack".into(),
             created_at: 0,
+            ..Default::default()
         };
         let mut running = start(&base, &p).expect("start falhou");
         let body = http_get(http);
@@ -1112,6 +1172,7 @@ mod tests {
             db_port: db,
             db_name: "wp".into(),
             created_at: 0,
+            ..Default::default()
         };
         scaffold(&base, &p).unwrap();
         let mut running = start(&base, &p).expect("start falhou");
@@ -1199,6 +1260,7 @@ mod tests {
             db_port: db2,
             db_name: "wp2".into(),
             created_at: 0,
+            ..Default::default()
         };
         scaffold(&base, &p2).unwrap();
         let mut running2 = start(&base, &p2).expect("start do projeto restaurado");
@@ -1246,6 +1308,7 @@ mod tests {
                 db_port: db,
                 db_name: "modelo".into(),
                 created_at: 0,
+                ..Default::default()
             }
         };
         let show = |_: InstallProgress| {};
@@ -1287,5 +1350,180 @@ echo 'notas=' . $pdo->query('SELECT COUNT(*) FROM notas')->fetchColumn();
 
     fn runtime_docroot(base: &Path, p: &Project) -> String {
         docroot_dir(base, p).display().to_string()
+    }
+
+    fn caddy_sample() -> Project {
+        Project { id: "loja".into(), http_port: 8000, db_port: 3307, ..Default::default() }
+    }
+
+    fn render(p: &Project, lan_hosts: &[String]) -> String {
+        render_caddyfile(p, "/p/app", "/p/logs", 9000, None, lan_hosts)
+    }
+
+    #[test]
+    fn caddyfile_padrao_e_so_http_local() {
+        let c = render(&caddy_sample(), &["192.168.0.10".into()]);
+        assert!(c.contains("auto_https off"));
+        assert!(c.contains(":8000 {\n\tbind 127.0.0.1\n\timport app"));
+        assert!(!c.contains("tls internal") && !c.contains("0.0.0.0") && !c.contains("192.168"));
+    }
+
+    #[test]
+    fn caddyfile_https_usa_a_ca_local_e_nao_redireciona() {
+        let mut p = caddy_sample();
+        p.https = true;
+        p.https_port = 8443;
+        let c = render(&p, &["192.168.0.10".into()]);
+        assert!(c.contains("auto_https disable_redirects") && c.contains("skip_install_trust"));
+        assert!(!c.contains("auto_https off"));
+        assert!(c.contains("https://loja.localhost:8443, https://127.0.0.1:8443 {\n\tbind 127.0.0.1\n\ttls internal"));
+        assert!(!c.contains("192.168"), "o IP da rede só entra com a rede ligada");
+        // O HTTP continua disponível.
+        assert!(c.contains(":8000 {"));
+    }
+
+    #[test]
+    fn caddyfile_rede_escuta_em_todas_as_interfaces_e_inclui_os_nomes_no_certificado() {
+        let mut p = caddy_sample();
+        p.lan = true;
+        p.https = true;
+        p.https_port = 8443;
+        let c = render(&p, &["192.168.0.10".into(), "meu-mac.local".into()]);
+        assert_eq!(c.matches("bind 0.0.0.0").count(), 2, "{c}");
+        assert!(!c.contains("bind 127.0.0.1"));
+        assert!(c.contains("https://192.168.0.10:8443") && c.contains("https://meu-mac.local:8443"));
+    }
+
+    #[test]
+    fn caddyfile_rede_sem_https_nao_cria_site_tls() {
+        let mut p = caddy_sample();
+        p.lan = true;
+        let c = render(&p, &["192.168.0.10".into()]);
+        assert!(c.contains(":8000 {\n\tbind 0.0.0.0"));
+        assert!(!c.contains("tls internal"));
+    }
+
+    #[test]
+    fn adminer_continua_so_local_mesmo_com_a_rede_ligada() {
+        let mut p = caddy_sample();
+        p.lan = true;
+        let c = render_caddyfile(&p, "/p/app", "/p/logs", 9000, Some((9100, "/tools".into())), &[]);
+        let admin = &c[c.find(":9100 {").unwrap()..];
+        assert!(admin.starts_with(":9100 {\n\tbind 127.0.0.1"), "{admin}");
+    }
+
+    /// HTTPS de verdade: o Caddy emite o certificado da CA local, o PHP enxerga `HTTPS=on` e o
+    /// certificado vale para `<id>.localhost` (verificado com o certificado raiz, sem confiar no sistema).
+    /// Usa PHP, MySQL e Caddy já instalados. Rode com:
+    /// `cargo test --lib https_end_to_end -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn https_end_to_end() {
+        let base = std::env::temp_dir().join(format!("localtusk-test-https-{}", project::now()));
+        let http = project::free_port(18400, &Default::default()).unwrap();
+        let https = project::free_port(18450, &Default::default()).unwrap();
+        let db = project::free_port(13700, &Default::default()).unwrap();
+        let p = Project {
+            id: "seguro".into(),
+            name: "Seguro".into(),
+            http_port: http,
+            https_port: https,
+            https: true,
+            db_port: db,
+            db_name: "seguro".into(),
+            ..Default::default()
+        };
+        scaffold(&base, &p).unwrap();
+        fs::write(docroot_dir(&base, &p).join("index.php"), "<?php echo 'https=' . ($_SERVER['HTTPS'] ?? 'off');").unwrap();
+        let caddy = extras::caddy_bin(&dirs::home_dir().unwrap().join("LocalTusk")).expect("Caddy instalado");
+        // Reaproveita o Caddy já baixado pelo app: copia para a pasta de teste.
+        let dest = extras::caddy_bin(&base);
+        if dest.is_none() {
+            let target = base.join("bin").join("tools").join("caddy");
+            fs::create_dir_all(&target).unwrap();
+            fs::copy(&caddy, target.join(caddy.file_name().unwrap())).unwrap();
+        }
+        let mut running = start(&base, &p).expect("start falhou");
+
+        let root = crate::ssl::root_cert(&base);
+        assert!(root.is_file(), "a CA deveria ter sido criada em {}", root.display());
+        let url = format!("https://{}:{https}/", project::site_host(&p));
+        let out = Command::new("curl")
+            .args(["-s", "--max-time", "10", "--cacert"])
+            .arg(&root)
+            .arg(&url)
+            .output()
+            .unwrap();
+        assert!(out.status.success(), "curl: {} / {}", out.status, String::from_utf8_lossy(&out.stderr));
+        assert_eq!(String::from_utf8_lossy(&out.stdout), "https=on");
+        // Sem a CA, o certificado não é confiável (comprova que não é um site HTTP disfarçado).
+        let bad = Command::new("curl").args(["-s", "--max-time", "10", "--cacert", "/dev/null", &url]).status().unwrap();
+        assert!(!bad.success());
+        // O HTTP continua respondendo.
+        assert!(http_get(http).contains("https=off"));
+        // E o status da CA sabe que ela existe.
+        assert!(crate::ssl::status(&base).ca_ready);
+
+        stop(&mut running);
+        assert!(project::port_is_free(https), "Caddy ainda no ar");
+        let _ = fs::remove_dir_all(&base);
+    }
+
+    /// Acesso pela rede: desligado, o IP da rede recusa a conexão; ligado, responde por HTTP e
+    /// por HTTPS (certificado válido para o IP). Rode com:
+    /// `cargo test --lib lan_end_to_end -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn lan_end_to_end() {
+        let Some(ip) = project::lan_ip() else {
+            println!("sem rede local: teste ignorado");
+            return;
+        };
+        let base = std::env::temp_dir().join(format!("localtusk-test-lan-{}", project::now()));
+        let http = project::free_port(18500, &Default::default()).unwrap();
+        let https = project::free_port(18550, &Default::default()).unwrap();
+        let db = project::free_port(13800, &Default::default()).unwrap();
+        let mut p = Project {
+            id: "rede".into(),
+            name: "Rede".into(),
+            http_port: http,
+            https_port: https,
+            https: true,
+            db_port: db,
+            db_name: "rede".into(),
+            ..Default::default()
+        };
+        scaffold(&base, &p).unwrap();
+        fs::write(docroot_dir(&base, &p).join("index.php"), "<?php echo 'ola ' . $_SERVER['HTTP_HOST'];").unwrap();
+        let caddy = extras::caddy_bin(&dirs::home_dir().unwrap().join("LocalTusk")).expect("Caddy instalado");
+        let target = base.join("bin").join("tools").join("caddy");
+        fs::create_dir_all(&target).unwrap();
+        fs::copy(&caddy, target.join(caddy.file_name().unwrap())).unwrap();
+
+        let curl = |extra: &[&str], url: &str| {
+            Command::new("curl").args(["-s", "--max-time", "10"]).args(extra).arg(url).output().unwrap()
+        };
+
+        // 1) Só local: o IP da rede recusa.
+        let mut running = start(&base, &p).expect("start falhou");
+        let blocked = curl(&[], &format!("http://{ip}:{http}/"));
+        assert!(!blocked.status.success(), "sem a rede ligada o IP da rede deveria recusar");
+        assert!(http_get(http).contains("ola"), "o acesso local deveria funcionar");
+        stop(&mut running);
+
+        // 2) Rede ligada.
+        p.lan = true;
+        let mut running = start(&base, &p).expect("start falhou");
+        let ok = curl(&[], &format!("http://{ip}:{http}/"));
+        assert_eq!(String::from_utf8_lossy(&ok.stdout), format!("ola {ip}:{http}"));
+        let root = crate::ssl::root_cert(&base);
+        let secure = curl(&["--cacert", root.to_str().unwrap()], &format!("https://{ip}:{https}/"));
+        assert!(secure.status.success(), "HTTPS pelo IP: {}", String::from_utf8_lossy(&secure.stderr));
+        assert_eq!(String::from_utf8_lossy(&secure.stdout), format!("ola {ip}:{https}"));
+        // O banco e o Adminer continuam só locais.
+        let blocked_db = std::net::TcpStream::connect_timeout(&SocketAddr::from((ip, db)), Duration::from_secs(2));
+        assert!(blocked_db.is_err(), "o MySQL não pode ficar exposto na rede");
+        stop(&mut running);
+        let _ = fs::remove_dir_all(&base);
     }
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import AccessPanel from "./Access";
 import ApiTools from "./ApiTools";
 import BackupPanel, { pickBackupFile } from "./Backup";
 import BlueprintsView, { SaveBlueprintPanel } from "./Blueprint";
@@ -700,7 +701,12 @@ function Overview(props: {
           </select>
         </Tile>
 
-        <Tile icon="globe" label="Servidor web" value={`:${p.httpPort}`} sub="Caddy · HTTP em 127.0.0.1" />
+        <Tile
+          icon="globe"
+          label="Servidor web"
+          value={`:${p.httpPort}`}
+          sub={`Caddy · ${p.https ? `HTTPS :${p.httpsPort} · ` : "HTTP · "}${p.lan ? "rede local" : "só este computador"}`}
+        />
       </div>
 
       <div className="cols">
@@ -765,6 +771,10 @@ function Overview(props: {
             do projeto.
           </p>
         </section>
+      </div>
+
+      <div className="cols">
+        <AccessPanel project={p} onChanged={props.onChanged} onError={props.onError} />
       </div>
 
       <div className="cols">

@@ -13,7 +13,15 @@ export interface Project {
   dbName: string;
   dbUser: string;
   dbPassword: string;
+  /** Endereço principal (HTTPS quando ligado). */
   url: string;
+  httpUrl: string;
+  https: boolean;
+  httpsPort: number;
+  /** Aceita conexões de outros aparelhos da rede. */
+  lan: boolean;
+  /** Endereços para abrir de outros aparelhos (vazio se desligado ou sem rede). */
+  lanUrls: string[];
   path: string;
   running: boolean;
   busy: boolean;
@@ -23,6 +31,17 @@ export interface Project {
   hasWordpress: boolean;
   /** A pasta pública tem arquivos além do index.php de exemplo. */
   docrootInUse: boolean;
+}
+
+export interface SslStatus {
+  /** A autoridade de certificação local já foi criada. */
+  caReady: boolean;
+  /** O sistema confia nela (o navegador não avisa). */
+  trusted: boolean;
+  /** Caminho do certificado raiz, para instalar em outros aparelhos. */
+  caPath: string;
+  /** Dá para instalar a confiança automaticamente neste sistema. */
+  canTrust: boolean;
 }
 
 export interface PhpInstall {
@@ -212,6 +231,11 @@ export const api = {
     invoke<Project>("set_php_version", { id, phpVersion }),
   setDbVersion: (id: string, dbVersion: string) =>
     invoke<Project>("set_db_version", { id, dbVersion }),
+  setHttps: (id: string, enabled: boolean) => invoke<Project>("set_https", { id, enabled }),
+  setLan: (id: string, enabled: boolean) => invoke<Project>("set_lan", { id, enabled }),
+  sslStatus: () => invoke<SslStatus>("ssl_status"),
+  trustCertificate: () => invoke<SslStatus>("trust_certificate"),
+  revealCa: () => invoke<void>("reveal_ca"),
   listMysqlVersions: () => invoke<MysqlInstall[]>("list_mysql_versions"),
   mysqlCatalog: () => invoke<MysqlRelease[]>("mysql_catalog"),
   installMysql: (version: string) => invoke<void>("install_mysql", { version }),

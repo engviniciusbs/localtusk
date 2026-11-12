@@ -136,6 +136,20 @@ const PATHS: Record<string, ReactNode> = {
       <line x1="12" x2="12.01" y1="17" y2="17" />
     </>
   ),
+  lock: (
+    <>
+      <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+      <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+    </>
+  ),
+  wifi: (
+    <>
+      <path d="M12 20h.01" />
+      <path d="M2 8.82a15 15 0 0 1 20 0" />
+      <path d="M5 12.859a10 10 0 0 1 14 0" />
+      <path d="M8.5 16.429a5 5 0 0 1 7 0" />
+    </>
+  ),
   file: (
     <>
       <path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z" />
@@ -245,4 +259,21 @@ export function Copyable({ value, label }: { value: string; label?: string }) {
 /** LED de status do projeto. */
 export function Led({ state }: { state: "on" | "off" | "busy" }) {
   return <span className={`led ${state}`} role="img" aria-label={state === "on" ? "rodando" : state === "busy" ? "ocupado" : "parado"} />;
+}
+
+/** Interruptor (liga/desliga) acessível: botão com `role="switch"`. */
+export function Switch(props: { checked: boolean; onChange: (next: boolean) => void; disabled?: boolean; label: string }) {
+  return (
+    <button
+      type="button"
+      role="switch"
+      aria-checked={props.checked}
+      aria-label={props.label}
+      className={`switch ${props.checked ? "on" : ""}`}
+      disabled={props.disabled}
+      onClick={() => props.onChange(!props.checked)}
+    >
+      <span className="knob" />
+    </button>
+  );
 }
