@@ -1,6 +1,6 @@
 [package]
 name = "localtusk"
-version = "0.6.2"
+version = "0.6.3"
 description = "LocalTusk - ambientes PHP locais sem Docker"
 authors = ["LocalTusk contributors"]
 license = "MIT"

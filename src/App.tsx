@@ -328,7 +328,7 @@ function Welcome(props: {
     <div className="welcome">
       <Logo size={56} />
       <h1>Bem-vindo ao LocalTusk</h1>
-      <p className="muted">Ambientes PHP locais, sem Docker. Cada projeto tem o seu próprio PHP, banco e servidor.</p>
+      <p className="muted">O melhor ambiente para desenvolver em PHP.</p>
       <ol className="steps">
         {props.steps.map((s, i) => (
           <li key={s.label} className={s.done ? "done" : ""}>
