@@ -241,11 +241,11 @@ mod tests {
         assert_eq!(imported.source_name, "Loja");
         assert_eq!(imported.description, "Base com login pronto");
         assert_eq!(imported.php_version, "8.3");
-        assert!(imported.path.ends_with("blueprints/landing-page.tar.gz"), "{}", imported.path);
+        assert!(imported.path.replace('\\', "/").ends_with("blueprints/landing-page.tar.gz"), "{}", imported.path);
 
         // Importar de novo não sobrescreve: ganha um sufixo.
         let again = import(&base, &src).unwrap();
-        assert!(again.path.ends_with("blueprints/landing-page-2.tar.gz"), "{}", again.path);
+        assert!(again.path.replace('\\', "/").ends_with("blueprints/landing-page-2.tar.gz"), "{}", again.path);
         assert_eq!(list(&base).len(), 2);
 
         // Exportar acrescenta a extensão quando falta.

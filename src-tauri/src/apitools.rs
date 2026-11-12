@@ -287,7 +287,9 @@ pub struct ApiResponse {
 
 fn friendly(e: ureq::Error) -> String {
     let text = e.to_string();
-    if text.contains("Connection refused") {
+    // Pelo tipo do erro (a mensagem muda de sistema para sistema; no Windows é "actively refused").
+    let refused = matches!(&e, ureq::Error::Io(io) if io.kind() == std::io::ErrorKind::ConnectionRefused);
+    if refused || text.contains("Connection refused") || text.contains("actively refused") {
         "Conexão recusada. O projeto está rodando?".into()
     } else if text.to_lowercase().contains("timeout") || text.contains("timed out") {
         "Tempo esgotado esperando a resposta.".into()
@@ -437,6 +439,30 @@ mod tests {
         let _ = fs::remove_dir_all(&base);
     }
 
+    /// Lê a requisição inteira: cabeçalhos e, se houver `Content-Length`, o corpo. O cliente pode
+    /// mandar cabeçalhos e corpo em pacotes separados, então um único `read` não basta.
+    fn read_request(s: &mut std::net::TcpStream) -> String {
+        let mut data = Vec::new();
+        let mut buf = [0u8; 4096];
+        loop {
+            let n = s.read(&mut buf).unwrap();
+            if n == 0 {
+                break;
+            }
+            data.extend_from_slice(&buf[..n]);
+            let Some(end) = data.windows(4).position(|w| w == b"\r\n\r\n") else { continue };
+            let head = String::from_utf8_lossy(&data[..end]).to_lowercase();
+            let want = head
+                .lines()
+                .find_map(|l| l.strip_prefix("content-length:").and_then(|v| v.trim().parse::<usize>().ok()))
+                .unwrap_or(0);
+            if data.len() >= end + 4 + want {
+                break;
+            }
+        }
+        String::from_utf8_lossy(&data).to_string()
+    }
+
     /// Servidor HTTP mínimo: devolve a requisição recebida no corpo, com o status pedido na URL.
     fn echo_server() -> u16 {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
@@ -444,9 +470,7 @@ mod tests {
         std::thread::spawn(move || {
             for stream in listener.incoming().take(5) {
                 let mut s = stream.unwrap();
-                let mut buf = [0u8; 4096];
-                let n = s.read(&mut buf).unwrap();
-                let req = String::from_utf8_lossy(&buf[..n]).to_string();
+                let req = read_request(&mut s);
                 let (status, extra) = if req.starts_with("GET /missing") {
                     ("404 Not Found", "")
                 } else if req.starts_with("GET /redirect") {
