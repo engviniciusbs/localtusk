@@ -314,6 +314,15 @@ code { overflow-wrap: anywhere; }
 .oss ul { display: grid; gap: 12px; margin-top: 26px; }
 .oss li { display: flex; gap: 12px; align-items: flex-start; color: #c7cbe5; font-size: 16.5px; }
 .oss li .ico { color: var(--green); margin-top: 3px; }
+.support { margin-top: 34px; padding: 20px 22px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--surface); display: grid; grid-template-columns: auto 1fr; gap: 22px; align-items: center; }
+.support .qr { display: block; width: 132px; height: 132px; padding: 6px; border-radius: 12px; background: #fff; }
+.support .qr img { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
+.support .txt { display: grid; gap: 14px; min-width: 0; }
+.support p { color: #c7cbe5; font-size: 15.5px; }
+.support .txt .btn { justify-self: start; text-decoration: none; }
+.support a { text-decoration: none; }
+.btn .ico-heart { color: #ff7ab2; }
+@media (max-width: 520px) { .support { grid-template-columns: 1fr; justify-items: start; } }
 .links { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 30px; }
 @media (max-width: 900px) { .oss { grid-template-columns: 1fr; } }
 

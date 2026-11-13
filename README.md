@@ -108,6 +108,10 @@ src-tauri/src/
 prototipo/       protótipo original em shell + Docker (referência)
 ```
 
+## Apoie
+
+O LocalTusk é gratuito e continua completo para todo mundo. Se ele ajuda no seu trabalho, você pode apoiar o projeto com um Pix pelo [LivePix](https://livepix.gg/jhowmac).
+
 ## Licença
 
 [MIT](LICENSE)
