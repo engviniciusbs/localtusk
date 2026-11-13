@@ -243,12 +243,41 @@ fn import_database(base: &Path, p: &Project, dump: &Path) -> Result<(), String> 
         return Err(format!("Falha ao preparar o banco ({})\n\n{}", out.status, tail(&out.stderr)));
     }
 
-    let input = File::open(dump).map_err(|e| format!("{}: {e}", dump.display()))?;
-    let out = client()
-        .arg(&p.db_name)
-        .stdin(Stdio::from(input))
-        .output()
-        .map_err(|e| format!("mysql: {e}"))?;
+    // Dumps com um INSERT por linha (como o do Local) fazem o MySQL gravar no disco a
+    // cada linha, o que torna a importação até ~15x mais lenta. Durante a importação,
+    // a gravação é adiada (seguro num ambiente local) e depois volta ao que era.
+    let sql = |q: &str| client().args(["-N", "-B", "-e", q]).stdin(Stdio::null()).output();
+    let saved = sql("SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog")
+        .ok()
+        .filter(|o| o.status.success())
+        .and_then(|o| {
+            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
+            let mut it = s.split_whitespace();
+            Some((it.next()?.to_string(), it.next()?.to_string()))
+        });
+    if saved.is_some() {
+        let _ = sql("SET GLOBAL innodb_flush_log_at_trx_commit=2; SET GLOBAL sync_binlog=0;");
+    }
+
+    let input = File::open(dump).map_err(|e| format!("{}: {e}", dump.display()));
+    let out = input.and_then(|input| {
+        client()
+            .arg(&p.db_name)
+            .stdin(Stdio::from(input))
+            .output()
+            .map_err(|e| format!("mysql: {e}"))
+    });
+
+    if let Some((flush, binlog)) = saved {
+        let restore = |v: &str| v.chars().all(|c| c.is_ascii_digit()) && !v.is_empty();
+        if restore(&flush) && restore(&binlog) {
+            let _ = sql(&format!(
+                "SET GLOBAL innodb_flush_log_at_trx_commit={flush}; SET GLOBAL sync_binlog={binlog};"
+            ));
+        }
+    }
+
+    let out = out?;
     if out.status.success() {
         Ok(())
     } else {
