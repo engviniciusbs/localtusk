@@ -185,6 +185,77 @@ fn build_site(data_dir: &Path, home: &Path, id: &str, v: &Value, status: Option<
     site
 }
 
+/// Copia `src` para `dst` (criando `dst`). Links simbólicos viram cópia do
+/// conteúdo apontado; laços e links quebrados são pulados. `on_file` recebe a
+/// contagem acumulada de arquivos copiados. Devolve os caminhos relativos
+/// (com `/`) que eram links. A origem só é lida, nunca alterada.
+pub fn copy_tree(src: &Path, dst: &Path, on_file: &dyn Fn(u64)) -> Result<Vec<String>, String> {
+    let raiz = src
+        .canonicalize()
+        .map_err(|e| format!("Não foi possível ler {}: {e}", src.display()))?;
+    let mut links = Vec::new();
+    let mut count = 0u64;
+    copy_dir(&raiz, dst, "", &mut vec![raiz.clone()], &mut count, on_file, &mut links)?;
+    Ok(links)
+}
+
+fn copy_dir(
+    src: &Path,
+    dst: &Path,
+    rel: &str,
+    ancestrais: &mut Vec<PathBuf>,
+    count: &mut u64,
+    on_file: &dyn Fn(u64),
+    links: &mut Vec<String>,
+) -> Result<(), String> {
+    fs::create_dir_all(dst).map_err(|e| format!("Não foi possível criar {}: {e}", dst.display()))?;
+    let entries = fs::read_dir(src).map_err(|e| format!("Não foi possível ler {}: {e}", src.display()))?;
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("Não foi possível ler {}: {e}", src.display()))?;
+        let path = entry.path();
+        let name = entry.file_name();
+        let rel_item = if rel.is_empty() {
+            name.to_string_lossy().into_owned()
+        } else {
+            format!("{rel}/{}", name.to_string_lossy())
+        };
+        let alvo_dst = dst.join(&name);
+        let meta = fs::symlink_metadata(&path).map_err(|e| format!("Não foi possível ler {}: {e}", path.display()))?;
+        let eh_link = meta.file_type().is_symlink();
+        if eh_link {
+            links.push(rel_item.clone());
+        }
+        // Resolve o link (se for) para o destino real; quebrado = pula.
+        let real = if eh_link {
+            match path.canonicalize() {
+                Ok(r) => r,
+                Err(_) => continue,
+            }
+        } else {
+            path.clone()
+        };
+        let meta_real = match fs::metadata(&real) {
+            Ok(m) => m,
+            Err(_) => continue,
+        };
+        if meta_real.is_dir() {
+            // Link para uma pasta ancestral = laço.
+            if eh_link && ancestrais.contains(&real) {
+                continue;
+            }
+            ancestrais.push(real.clone());
+            let r = copy_dir(&real, &alvo_dst, &rel_item, ancestrais, count, on_file, links);
+            ancestrais.pop();
+            r?;
+        } else if meta_real.is_file() {
+            fs::copy(&real, &alvo_dst).map_err(|e| format!("Não foi possível copiar {}: {e}", path.display()))?;
+            *count += 1;
+            on_file(*count);
+        }
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -368,5 +439,59 @@ mod tests {
         assert!(public_dir(&find_site(&data, &home, "snap1").unwrap()).ends_with("snap/app/public"));
         assert!(dump_file(&find_site(&data, &home, "snap1").unwrap()).ends_with("app/sql/local.sql"));
         assert!(local_data_dir(&home).is_some() || cfg!(windows));
+    }
+
+    #[test]
+    fn copia_arquivos_e_subpastas() {
+        let base = temp_base("copia");
+        write(&base.join("src/a.txt"), "A");
+        write(&base.join("src/sub/b.txt"), "B");
+        let n = std::cell::Cell::new(0u64);
+        let links = copy_tree(&base.join("src"), &base.join("dst"), &|c| n.set(c)).unwrap();
+        assert!(links.is_empty());
+        assert_eq!(fs::read_to_string(base.join("dst/a.txt")).unwrap(), "A");
+        assert_eq!(fs::read_to_string(base.join("dst/sub/b.txt")).unwrap(), "B");
+        assert_eq!(n.get(), 2);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_vira_copia_e_e_listado() {
+        let base = temp_base("link");
+        write(&base.join("fora/meu/x.php"), "X");
+        let plugins = base.join("src/wp-content/plugins");
+        fs::create_dir_all(&plugins).unwrap();
+        std::os::unix::fs::symlink("../../../fora/meu", plugins.join("meu")).unwrap();
+        let links = copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
+        assert_eq!(links, vec!["wp-content/plugins/meu".to_string()]);
+        let d = base.join("dst/wp-content/plugins/meu");
+        assert!(!fs::symlink_metadata(&d).unwrap().file_type().is_symlink());
+        assert_eq!(fs::read_to_string(d.join("x.php")).unwrap(), "X");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn laco_de_link_nao_trava() {
+        let base = temp_base("laco");
+        write(&base.join("src/sub/f.txt"), "F");
+        std::os::unix::fs::symlink("..", base.join("src/sub/loop")).unwrap();
+        let links = copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
+        assert!(links.contains(&"sub/loop".to_string()));
+        assert!(base.join("dst/sub/f.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn origem_fica_intacta() {
+        let base = temp_base("intacta");
+        write(&base.join("fora/meu/x.php"), "X");
+        write(&base.join("src/a.txt"), "A");
+        std::os::unix::fs::symlink("../fora/meu", base.join("src/lnk")).unwrap();
+        copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
+        write(&base.join("dst/a.txt"), "mudou");
+        write(&base.join("dst/lnk/x.php"), "mudou");
+        assert_eq!(fs::read_to_string(base.join("src/a.txt")).unwrap(), "A");
+        assert_eq!(fs::read_to_string(base.join("fora/meu/x.php")).unwrap(), "X");
+        assert_eq!(fs::read_link(base.join("src/lnk")).unwrap(), PathBuf::from("../fora/meu"));
     }
 }
