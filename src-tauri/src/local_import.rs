@@ -415,7 +415,8 @@ mod tests {
         let (data, home) = fake_local(&dir);
         let all = list_sites(&data, &home).unwrap();
         let s = get(&all, "gone");
-        let esperado = format!("A pasta do site não foi encontrada: {}.", home.join("Local Sites/sumiu/app/public").display());
+        let esperado = format!("A pasta do site não foi encontrada: {}.", public_dir(&s).display());
+        assert!(public_dir(&s).ends_with("sumiu/app/public"));
         assert_eq!(s.blocker.as_deref(), Some(esperado.as_str()));
         assert!(get(&all, "snap1").blocker.is_none());
     }
@@ -426,7 +427,8 @@ mod tests {
         let (data, home) = fake_local(&dir);
         fs::remove_dir_all(home.join("Local Sites/snap/app/public")).unwrap();
         let s = get(&list_sites(&data, &home).unwrap(), "snap1");
-        let esperado = format!("A pasta do site não foi encontrada: {}.", home.join("Local Sites/snap/app/public").display());
+        let esperado = format!("A pasta do site não foi encontrada: {}.", public_dir(&s).display());
+        assert!(public_dir(&s).ends_with("snap/app/public"));
         assert_eq!(s.blocker.as_deref(), Some(esperado.as_str()));
     }
 

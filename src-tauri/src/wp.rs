@@ -736,13 +736,11 @@ pub(crate) fn login_token_key(token: &str) -> String {
     format!("localtusk_login_{hash}")
 }
 
-/// 32 bytes aleatórios do sistema, em hexadecimal. Sem alternativa se a leitura falhar.
+/// 32 bytes aleatórios do sistema (gerador seguro do SO, em qualquer plataforma), em
+/// hexadecimal. Sem alternativa se a leitura falhar.
 fn random_token() -> Result<String, String> {
-    use std::io::Read;
     let mut buf = [0u8; 32];
-    fs::File::open("/dev/urandom")
-        .and_then(|mut f| f.read_exact(&mut buf))
-        .map_err(|e| format!("Não foi possível gerar o código de login: {e}"))?;
+    getrandom::fill(&mut buf).map_err(|e| format!("Não foi possível gerar o código de login: {e}"))?;
     Ok(buf.iter().map(|b| format!("{b:02x}")).collect())
 }
 
