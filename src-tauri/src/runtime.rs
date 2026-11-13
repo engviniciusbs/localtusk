@@ -1793,6 +1793,119 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
         let _ = fs::remove_dir_all(project::project_dir(&base, "wp"));
     }
 
+    /// Login automático no wp-admin: código de uso único, vencido, reaproveitado e de quem não é admin.
+    /// Mesmas ferramentas (e cache) do `wordpress_end_to_end`. Rode com:
+    /// `cargo test --lib auto_login_end_to_end -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn auto_login_end_to_end() {
+        let base = std::env::temp_dir().join("localtusk-test-wp");
+        let _ = fs::remove_dir_all(project::project_dir(&base, "al"));
+        let show = |p: InstallProgress| {
+            if p.stage != "download" {
+                println!("  [{}] {} {}", p.id, p.stage, p.message.unwrap_or_default());
+            }
+        };
+        if !extras::is_installed(&base, "caddy") {
+            extras::install(&base, "caddy", &show).expect("caddy");
+        }
+        if mysql_manager::pick(&base, "8.4").is_none() {
+            let cat = mysql_manager::catalog(&base).expect("catálogo");
+            let my = cat.iter().find(|r| r.series == "8.4" && r.latest).unwrap().version.clone();
+            mysql_manager::install(&base, &my, &show).expect("mysql");
+        }
+        if crate::tools::pick_php(&base, "8.3").map(|i| !i.managed).unwrap_or(true) {
+            let cat = crate::php_manager::catalog(&base).expect("catálogo do PHP");
+            let php = cat.iter().find(|r| r.minor == "8.3" && r.latest).unwrap().version.clone();
+            crate::php_manager::install(&base, &php, &show).expect("php");
+        }
+        let http = project::free_port(18900, &Default::default()).unwrap();
+        let db = project::free_port(14200, &Default::default()).unwrap();
+        let p = Project {
+            id: "al".into(),
+            name: "Login".into(),
+            docroot: "".into(),
+            php_version: "8.3".into(),
+            db_version: "8.4".into(),
+            http_port: http,
+            db_port: db,
+            db_name: "al".into(),
+            created_at: 0,
+            ..Default::default()
+        };
+        scaffold(&base, &p).unwrap();
+        let mut running = start(&base, &p).expect("start falhou");
+        let opts = crate::wp::WpOptions {
+            title: "Blog Login".into(),
+            admin_user: "admin".into(),
+            admin_password: "SenhaForte123".into(),
+            admin_email: "admin@example.com".into(),
+            locale: "en_US".into(),
+            replace_existing: true,
+        };
+        crate::wp::install_wordpress(&base, &p, &opts, &show).expect("install_wordpress");
+
+        assert_eq!(crate::wp::admin_users(&base, &p).unwrap(), vec!["admin".to_string()]);
+        crate::wp::install_login_plugin(&base, &p).unwrap();
+        crate::wp::install_login_plugin(&base, &p).expect("idempotente");
+        let plugin = docroot_dir(&base, &p).join("wp-content/mu-plugins/localtusk-login.php");
+        assert!(plugin.is_file());
+
+        let host = format!("Host: {}:{http}\r\n", project::site_host(&p));
+        let param = crate::wp::LOGIN_PARAM;
+        let visit = |token: &str| http_request(http, "GET", &format!("/?{param}={token}"), &host, "");
+        let location = |r: &str| r.lines().find_map(|l| l.strip_prefix("Location: ").or_else(|| l.strip_prefix("location: "))).unwrap_or("").trim().to_string();
+        let has_session = |r: &str| r.lines().any(|l| l.to_ascii_lowercase().starts_with("set-cookie: wordpress_logged_in_") && !l.contains("=deleted"));
+
+        // Código válido: entra no wp-admin.
+        let token = crate::wp::create_login_token(&base, &p, "admin").unwrap();
+        let r = visit(&token);
+        assert!(r.contains(" 302"), "{r}");
+        assert!(location(&r).ends_with("/wp-admin/"), "Location: {}", location(&r));
+        assert!(has_session(&r), "sem cookie de sessão:\n{r}");
+        let cookies: Vec<String> = r
+            .lines()
+            .filter_map(|l| l.strip_prefix("Set-Cookie: ").or_else(|| l.strip_prefix("set-cookie: ")))
+            .map(|c| c.split(';').next().unwrap().to_string())
+            .collect();
+        let admin = http_request(http, "GET", "/wp-admin/", &format!("{host}Cookie: {}\r\n", cookies.join("; ")), "");
+        assert!(admin.contains(" 200") && admin.contains("id=\"wpadminbar\""), "wp-admin não abriu logado");
+
+        // Uso único.
+        let again = visit(&token);
+        assert!(again.contains(" 302") && location(&again).contains("wp-login.php") && !has_session(&again), "{again}");
+
+        // Código vencido.
+        let shims = crate::wp::prepare_terminal(&base, &p).expect("terminal").parent().unwrap().join("shims");
+        let wp = |args: &str| {
+            let out = Command::new("/bin/sh")
+                .arg("-c")
+                .arg(format!("cd '{}' && wp {args}", runtime_docroot(&base, &p)))
+                .env("PATH", format!("{}:/usr/bin:/bin", shims.display()))
+                .output()
+                .unwrap();
+            assert!(out.status.success(), "wp {args}: {}", String::from_utf8_lossy(&out.stderr));
+        };
+        let old = "a".repeat(64);
+        wp(&format!("transient set {} admin 1", crate::wp::login_token_key(&old)));
+        std::thread::sleep(Duration::from_secs(2));
+        let expired = visit(&old);
+        assert!(expired.contains(" 302") && location(&expired).contains("wp-login.php") && !has_session(&expired), "{expired}");
+
+        // Quem não é administrador não entra.
+        wp("user create leitor l@x.test --role=subscriber");
+        let reader = crate::wp::create_login_token(&base, &p, "leitor").unwrap();
+        let denied = visit(&reader);
+        assert!(denied.contains(" 302") && location(&denied).contains("wp-login.php") && !has_session(&denied), "{denied}");
+
+        // Remover com o projeto parado.
+        stop(&mut running);
+        crate::wp::remove_login_plugin(&base, &p).unwrap();
+        assert!(!plugin.exists());
+        crate::wp::remove_login_plugin(&base, &p).expect("sem arquivo também é ok");
+        let _ = fs::remove_dir_all(project::project_dir(&base, "al"));
+    }
+
     /// Lista (caminho relativo, é link?) de tudo dentro de `dir`, sem seguir links.
     fn snapshot_tree(dir: &Path) -> Vec<(String, bool)> {
         fn walk(root: &Path, dir: &Path, out: &mut Vec<(String, bool)>) {
