@@ -686,3 +686,43 @@ h1, h2, h3 { text-wrap: balance; }
 .map-links h4 { display: flex; align-items: center; gap: 8px; font-size: 12.5px; margin: 6px 0; }
 .map-links ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
 .map-via { font: 500 10.5px var(--font-mono); color: var(--muted); }
+
+/* Grafo do mapa */
+.map-bar { display: inline-flex; align-self: flex-start; gap: 2px; padding: 3px; background: var(--surface); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); }
+.map-bar button { display: inline-flex; align-items: center; gap: 6px; background: transparent; border: 0; color: var(--muted); padding: 5px 12px; border-radius: 6px; font: 500 13px var(--font-sans, inherit); }
+.map-bar button:hover { color: var(--text); }
+.map-bar button.active { background: color-mix(in srgb, var(--php-purple) 28%, transparent); color: #fff; }
+.map-body.graph-view { grid-template-columns: minmax(0, 2.2fr) minmax(260px, 1fr); }
+@media (max-width: 1100px) { .map-body.graph-view { grid-template-columns: minmax(0, 1fr); } }
+.map-canvas { padding: 12px; }
+.graph { display: flex; flex-direction: column; gap: 10px; }
+.graph-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.graph-bar input[type="search"] { flex: 1 1 180px; min-width: 0; }
+.graph-depth { display: inline-flex; gap: 4px; margin-left: 4px; }
+.graph-check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; }
+.graph-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 14px; font-size: 11.5px; color: var(--muted); }
+.graph-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.graph-legend i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+.graph-count { margin-left: auto; font-family: var(--font-mono); }
+.graph-canvas { height: clamp(420px, 66vh, 720px); border: 1px solid var(--line-soft); border-radius: var(--radius-sm); overflow: hidden; background: var(--bg); }
+.graph-canvas .react-flow__attribution { background: transparent; opacity: 0.6; }
+.gnode {
+  width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: center;
+  padding: 0 10px; border-radius: 8px; background: var(--surface-3); border: 1px solid var(--line);
+  border-left: 4px solid var(--php-light-purple); font-family: var(--font-mono); cursor: pointer;
+  transition: opacity 150ms, box-shadow 150ms;
+}
+.gnode:hover { border-color: var(--accent); }
+.gnode.entry { border-left-color: var(--green); }
+.gnode.orphan { border-left-color: var(--amber); }
+.gnode.unreachable { border-left-color: var(--red); }
+.gnode.dim { opacity: 0.28; }
+.gnode.picked { box-shadow: 0 0 0 2px var(--php-purple), 0 0 18px color-mix(in srgb, var(--php-purple) 55%, transparent); border-color: var(--php-purple); }
+.gdir, .gname { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gdir { font-size: 10px; color: var(--muted); }
+.gname { font-size: 12.5px; color: var(--text); }
+.gnode .react-flow__handle { opacity: 0; width: 4px; height: 4px; min-width: 0; min-height: 0; }
+.glabel { font: 600 12px var(--font-mono); color: var(--muted); white-space: nowrap; pointer-events: none; }
+.react-flow { --xy-background-color: var(--bg); }
+.graph-canvas .react-flow__minimap { background: var(--surface); border: 1px solid var(--line-soft); border-radius: 6px; width: 150px; height: 96px; }
+.graph-canvas .react-flow__controls-button { background: var(--surface-3); border-color: var(--line); fill: var(--text); }

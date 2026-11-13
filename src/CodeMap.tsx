@@ -1,10 +1,13 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { CodeFile, CodeMap, FileKind, Project, api } from "./api";
 import { Icon, Spinner } from "./ui";
 
 function errMsg(e: unknown) {
   return typeof e === "string" ? e : e instanceof Error ? e.message : String(e);
 }
+
+// O desenho (React Flow + dagre) só é baixado quando alguém abre o Grafo.
+const CodeGraph = lazy(() => import("./CodeGraph").then((m) => ({ default: m.CodeGraph })));
 
 const KIND_LABEL: Record<FileKind, string> = {
   entry: "Entrada",
@@ -31,6 +34,7 @@ export function CodeMapTab({ project, onError }: { project: Project; onError: (m
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState<string | null>(null);
+  const [view, setView] = useState<"list" | "graph">("list");
   // `onError` muda a cada renderização do pai; guardá-lo aqui evita reler o projeto sem necessidade.
   const report = useRef(onError);
   report.current = onError;
@@ -80,6 +84,32 @@ export function CodeMapTab({ project, onError }: { project: Project; onError: (m
     );
   }
 
+  const detailPanel = (
+    <aside className="panel map-detail" aria-live="polite">
+      {current ? (
+        <Detail file={current} onPick={setSelected} />
+      ) : (
+        <>
+          <h3>
+            <Icon name="layers" /> Como ler o mapa
+          </h3>
+          <p className="muted small">
+            Escolha um arquivo para ver o que ele chama e quem o chama. <b>Sem uso</b> é um arquivo que nenhum outro do projeto carrega.{" "}
+            <b>Só usados por órfãos</b> só é chamado por arquivos sem uso, ou seja, também está parado.
+          </p>
+          <p className="muted small">
+            A leitura é estática: ela segue <code>require</code>/<code>include</code> com caminho fixo e classes ligadas por{" "}
+            <code>use</code>, <code>new</code>, <code>extends</code> e afins. Arquivos chamados por variável, hook, rota ou tarefa agendada
+            podem aparecer como <b>sem uso</b> por engano. Trate a lista como pistas, não como ordem para apagar.
+          </p>
+          <p className="muted small">
+            São <b>entradas</b>: arquivos da pasta pública, <code>index.php</code>, o autoload do Composer, <code>bin/</code> e <code>tests/</code>.
+          </p>
+        </>
+      )}
+    </aside>
+  );
+
   const filters: { id: Filter; label: string }[] = [
     { id: "all", label: "Todos" },
     { id: "orphan", label: "Sem uso" },
@@ -122,7 +152,29 @@ export function CodeMapTab({ project, onError }: { project: Project; onError: (m
         </div>
       ))}
 
-      <div className="map-body">
+      <div className="map-bar" role="tablist" aria-label="Forma de ver o mapa">
+        <button role="tab" aria-selected={view === "list"} className={view === "list" ? "active" : ""} onClick={() => setView("list")}>
+          <Icon name="layers" size={14} /> Lista
+        </button>
+        <button role="tab" aria-selected={view === "graph"} className={view === "graph" ? "active" : ""} onClick={() => setView("graph")}>
+          <Icon name="blueprint" size={14} /> Grafo
+        </button>
+      </div>
+
+      <div className={`map-body ${view === "graph" ? "graph-view" : ""}`}>
+        {view === "graph" ? (
+          <div className="panel map-canvas">
+            <Suspense
+              fallback={
+                <div className="map-loading">
+                  <Spinner /> Preparando o grafo…
+                </div>
+              }
+            >
+              <CodeGraph files={map.files} selected={selected} onSelect={setSelected} query={query} onQuery={setQuery} />
+            </Suspense>
+          </div>
+        ) : (
         <div className="panel map-list">
           <div className="map-tools">
             <input
@@ -168,30 +220,9 @@ export function CodeMapTab({ project, onError }: { project: Project; onError: (m
             </ul>
           )}
         </div>
+        )}
 
-        <aside className="panel map-detail" aria-live="polite">
-          {current ? (
-            <Detail file={current} onPick={setSelected} />
-          ) : (
-            <>
-              <h3>
-                <Icon name="layers" /> Como ler o mapa
-              </h3>
-              <p className="muted small">
-                Escolha um arquivo para ver o que ele chama e quem o chama. <b>Sem uso</b> é um arquivo que nenhum outro do projeto carrega.{" "}
-                <b>Só usados por órfãos</b> só é chamado por arquivos sem uso, ou seja, também está parado.
-              </p>
-              <p className="muted small">
-                A leitura é estática: ela segue <code>require</code>/<code>include</code> com caminho fixo e classes ligadas por{" "}
-                <code>use</code>, <code>new</code>, <code>extends</code> e afins. Arquivos chamados por variável, hook, rota ou tarefa agendada
-                podem aparecer como <b>sem uso</b> por engano. Trate a lista como pistas, não como ordem para apagar.
-              </p>
-              <p className="muted small">
-                São <b>entradas</b>: arquivos da pasta pública, <code>index.php</code>, o autoload do Composer, <code>bin/</code> e <code>tests/</code>.
-              </p>
-            </>
-          )}
-        </aside>
+        {detailPanel}
       </div>
     </div>
   );
