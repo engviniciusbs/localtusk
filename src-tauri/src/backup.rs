@@ -422,23 +422,43 @@ fn clear_dir(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-/// Restaura o backup dentro do projeto `p`, **substituindo** os arquivos e o banco dele.
-/// O projeto precisa estar rodando. Retorna um aviso se algo secundário falhou.
+/// De onde vêm os arquivos e o banco de uma restauração.
+#[derive(Clone, Copy)]
+pub enum RestoreSource<'a> {
+    Archive(&'a Path),
+    /// Pasta pública pronta + dump SQL (MySQL). Usado pelo importador do Local.
+    Folder { public: &'a Path, dump: &'a Path },
+}
+
+/// Restaura o backup (ou a pasta) dentro do projeto `p`, **substituindo** os arquivos e o
+/// banco dele. O projeto precisa estar rodando. Retorna um aviso se algo secundário falhou.
+/// A origem só é lida, nunca alterada.
 pub fn restore_into(
     base: &Path,
     p: &Project,
-    archive: &Path,
+    source: RestoreSource,
     key: &str,
     progress: &dyn Fn(InstallProgress),
 ) -> Result<Option<String>, String> {
+    let is_folder = matches!(source, RestoreSource::Folder { .. });
     // O dump de um tipo de banco não entra em outro (SQL do MySQL não roda no PostgreSQL).
-    let from = read_manifest(archive)?;
-    let from_engine = if project::valid_engine(&from.db_engine) { from.db_engine.as_str() } else { project::ENGINE_MYSQL };
+    let from_engine = match source {
+        RestoreSource::Archive(archive) => {
+            let from = read_manifest(archive)?;
+            if project::valid_engine(&from.db_engine) { from.db_engine } else { project::ENGINE_MYSQL.to_string() }
+        }
+        RestoreSource::Folder { dump, .. } => {
+            if !dump.is_file() {
+                return Err(format!("O banco de dados não foi encontrado: {}.", dump.display()));
+            }
+            project::ENGINE_MYSQL.to_string()
+        }
+    };
     if from_engine != project::engine_of(p) {
         let label = |e: &str| if e == project::ENGINE_POSTGRES { "PostgreSQL" } else { "MySQL" };
         return Err(format!(
             "Este backup é de um projeto com {} e o projeto de destino usa {}. Restaure como um projeto novo.",
-            label(from_engine),
+            label(&from_engine),
             label(project::engine_of(p))
         ));
     }
@@ -450,39 +470,64 @@ pub fn restore_into(
     fs::create_dir_all(&work).map_err(|e| e.to_string())?;
 
     let result = (|| -> Result<Option<String>, String> {
-        step(progress, key, "Restaurando os arquivos…");
-        clear_dir(&app)?;
-        fs::create_dir_all(&app).map_err(|e| e.to_string())?;
+        let (dump, links_note) = match source {
+            RestoreSource::Archive(archive) => {
+                step(progress, key, "Restaurando os arquivos…");
+                clear_dir(&app)?;
+                fs::create_dir_all(&app).map_err(|e| e.to_string())?;
 
-        let file = File::open(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
-        let mut ar = tar::Archive::new(GzDecoder::new(file));
-        for entry in ar.entries().map_err(|e| e.to_string())? {
-            let mut entry = entry.map_err(|e| format!("backup corrompido: {e}"))?;
-            let path = entry.path().map_err(|e| e.to_string())?.into_owned();
-            // `unpack_in` recusa caminhos que saiam da pasta de destino.
-            if path == Path::new(DUMP) {
-                entry.unpack_in(&work).map_err(|e| e.to_string())?;
-            } else if path.starts_with("app") {
-                entry.unpack_in(&pdir).map_err(|e| format!("{}: {e}", path.display()))?;
+                let file = File::open(archive).map_err(|e| format!("{}: {e}", archive.display()))?;
+                let mut ar = tar::Archive::new(GzDecoder::new(file));
+                for entry in ar.entries().map_err(|e| e.to_string())? {
+                    let mut entry = entry.map_err(|e| format!("backup corrompido: {e}"))?;
+                    let path = entry.path().map_err(|e| e.to_string())?.into_owned();
+                    // `unpack_in` recusa caminhos que saiam da pasta de destino.
+                    if path == Path::new(DUMP) {
+                        entry.unpack_in(&work).map_err(|e| e.to_string())?;
+                    } else if path.starts_with("app") {
+                        entry.unpack_in(&pdir).map_err(|e| format!("{}: {e}", path.display()))?;
+                    }
+                }
+
+                let dump = work.join(DUMP);
+                if !dump.is_file() {
+                    return Err("O backup não contém o banco de dados.".into());
+                }
+                step(progress, key, "Restaurando o banco de dados…");
+                (dump, None)
             }
-        }
-
-        let dump = work.join(DUMP);
-        if !dump.is_file() {
-            return Err("O backup não contém o banco de dados.".into());
-        }
-        step(progress, key, "Restaurando o banco de dados…");
+            RestoreSource::Folder { public, dump } => {
+                step(progress, key, "Copiando os arquivos…");
+                clear_dir(&app)?;
+                fs::create_dir_all(&app).map_err(|e| e.to_string())?;
+                let on_file = |n: u64| {
+                    if n.is_multiple_of(500) {
+                        step(progress, key, &format!("Copiando os arquivos… ({n})"));
+                    }
+                };
+                let links = crate::local_import::copy_tree(public, &runtime::docroot_dir(base, p), &on_file)?;
+                // Só as pastas entram no aviso (links para arquivos também foram copiados).
+                let dirs: Vec<String> = links.into_iter().filter(|l| public.join(l).is_dir()).collect();
+                let note = (!dirs.is_empty())
+                    .then(|| format!("Pastas que eram links no Local foram copiadas: {}.", dirs.join(", ")));
+                step(progress, key, "Importando o banco de dados…");
+                (dump.to_path_buf(), note)
+            }
+        };
         import_database(base, p, &dump)?;
 
+        let mut wp_note = None;
         if wp::is_wordpress(base, p) {
             step(progress, key, "Ajustando o WordPress ao novo endereço…");
             if let Err(e) = wp::retarget(base, p, progress) {
-                return Ok(Some(format!(
-                    "O backup foi restaurado, mas não foi possível ajustar o WordPress automaticamente: {e}"
-                )));
+                let what = if is_folder { "O site foi importado" } else { "O backup foi restaurado" };
+                wp_note = Some(format!("{what}, mas não foi possível ajustar o WordPress automaticamente: {e}"));
             }
         }
-        Ok(None)
+        Ok(match (links_note, wp_note) {
+            (Some(l), Some(w)) => Some(format!("{l}\n\n{w}")),
+            (l, w) => l.or(w),
+        })
     })();
 
     let _ = fs::remove_dir_all(&work);
