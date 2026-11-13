@@ -1937,6 +1937,7 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
     /// abre no endereço do projeto novo e a pasta de origem não é alterada.
     /// Usa as mesmas ferramentas (e o mesmo cache) do `wordpress_end_to_end`. Rode com:
     /// `cargo test --lib local_folder_restore_end_to_end -- --ignored --nocapture`
+    #[cfg(unix)]
     #[test]
     #[ignore]
     fn local_folder_restore_end_to_end() {
