@@ -5,6 +5,8 @@ mod codemap;
 mod commands;
 mod download;
 mod extras;
+#[allow(dead_code)] // usado pelas próximas tarefas do importador
+mod local_import;
 mod mysql_manager;
 mod php_manager;
 mod postgres_manager;
