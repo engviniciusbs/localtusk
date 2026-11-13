@@ -197,11 +197,16 @@ pub fn status(base: &Path) -> Vec<ToolStatus> {
         path: caddy.map(|p| p.display().to_string()),
         install_hint: "instale em PHP e ferramentas".into(),
     });
+    // Basta um banco instalado (MySQL ou PostgreSQL); cada projeto usa o que escolher.
     let mysql = crate::mysql_manager::installs(base);
+    let pg = crate::postgres_manager::installs(base);
     out.push(ToolStatus {
-        name: "MySQL".into(),
-        found: !mysql.is_empty(),
-        path: mysql.first().map(|m| m.mysqld.display().to_string()),
+        name: "MySQL ou PostgreSQL".into(),
+        found: !mysql.is_empty() || !pg.is_empty(),
+        path: mysql
+            .first()
+            .map(|m| m.mysqld.display().to_string())
+            .or_else(|| pg.first().map(|i| i.postgres.display().to_string())),
         install_hint: "instale em PHP e ferramentas".into(),
     });
     out

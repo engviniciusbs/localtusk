@@ -7,19 +7,24 @@ import BlueprintsView, { SaveBlueprintPanel } from "./Blueprint";
 import { askConfirm } from "./confirm";
 import {
   BlueprintInfo,
+  DbEngine,
   ExtraStatus,
   InstallProgress,
   LOG_FILES,
   MysqlInstall,
   PhpInstall,
+  PostgresInstall,
   Project,
   ToolId,
   ToolStatus,
+  ValkeyInstall,
   api,
   resolveMysql,
   resolvePhp,
+  resolvePostgres,
 } from "./api";
 import PhpManager, { ProgressView, isBusy } from "./PhpManager";
+import RedisPanel from "./Redis";
 import WordPressPanel from "./WordPress";
 import { Copyable, Icon, IconName, Led, Logo, Skeleton, Spinner } from "./ui";
 import "./App.css";
@@ -39,6 +44,8 @@ export default function App() {
   const [tools, setTools] = useState<ToolStatus[]>([]);
   const [phps, setPhps] = useState<PhpInstall[]>([]);
   const [mysqls, setMysqls] = useState<MysqlInstall[]>([]);
+  const [postgreses, setPostgreses] = useState<PostgresInstall[]>([]);
+  const [valkeys, setValkeys] = useState<ValkeyInstall[]>([]);
   const [extras, setExtras] = useState<ExtraStatus[]>([]);
   const [progress, setProgress] = useState<Record<string, InstallProgress>>({});
   const [error, setError] = useState<string | null>(null);
@@ -50,6 +57,8 @@ export default function App() {
   const loadPhps = useCallback(() => {
     api.listPhpVersions().then(setPhps);
     api.listMysqlVersions().then(setMysqls);
+    api.listPostgresVersions().then(setPostgreses);
+    api.listValkeyVersions().then(setValkeys);
     api.checkTools().then(setTools);
     api.extrasStatus().then(setExtras);
   }, []);
@@ -253,6 +262,8 @@ export default function App() {
             <PhpManager
               phps={phps}
               mysqls={mysqls}
+              postgreses={postgreses}
+              valkeys={valkeys}
               extras={extras}
               progress={progress}
               onChanged={loadPhps}
@@ -269,6 +280,8 @@ export default function App() {
             <NewProject
               phps={phps}
               mysqls={mysqls}
+              postgreses={postgreses}
+              valkeys={valkeys}
               onManagePhp={() => setView("php")}
               onBlueprints={() => setView("blueprints")}
               onCancel={() => setView("project")}
@@ -290,6 +303,8 @@ export default function App() {
               project={selected}
               phps={phps}
               mysqls={mysqls}
+              postgreses={postgreses}
+              valkeys={valkeys}
               extras={extras}
               progress={progress}
               backupsDir={backupsDir}
@@ -307,7 +322,7 @@ export default function App() {
               steps={[
                 { done: caddyReady, label: "Servidor web (Caddy)" },
                 { done: phps.length > 0, label: "Uma versão do PHP" },
-                { done: mysqls.length > 0, label: "Uma versão do MySQL" },
+                { done: mysqls.length > 0 || postgreses.length > 0, label: "Um banco de dados (MySQL ou PostgreSQL)" },
               ]}
               onManage={() => setView("php")}
               onNew={() => setView("new")}
@@ -356,6 +371,8 @@ function Welcome(props: {
 function NewProject(props: {
   phps: PhpInstall[];
   mysqls: MysqlInstall[];
+  postgreses: PostgresInstall[];
+  valkeys: ValkeyInstall[];
   onManagePhp: () => void;
   onBlueprints: () => void;
   onCancel: () => void;
@@ -364,7 +381,9 @@ function NewProject(props: {
 }) {
   const [name, setName] = useState("");
   const [php, setPhp] = useState("");
+  const [engine, setEngine] = useState<DbEngine>("mysql");
   const [db, setDb] = useState("");
+  const [redis, setRedis] = useState(false);
   const [docroot, setDocroot] = useState("");
   const [saving, setSaving] = useState(false);
 
@@ -372,7 +391,7 @@ function NewProject(props: {
     e.preventDefault();
     setSaving(true);
     try {
-      props.onCreated(await api.createProject(name, php, db, docroot));
+      props.onCreated(await api.createProject(name, php, db, docroot, engine, redis && props.valkeys.length > 0));
     } catch (err) {
       props.onError(errMsg(err));
     } finally {
@@ -418,21 +437,67 @@ function NewProject(props: {
             </span>
           </div>
           <div className="field">
-            <label className="field-label" htmlFor="np-db">Versão do MySQL</label>
+            <label className="field-label" htmlFor="np-engine">Banco de dados</label>
+            <select
+              id="np-engine"
+              value={engine}
+              onChange={(e) => {
+                setEngine(e.target.value as DbEngine);
+                setDb("");
+              }}
+            >
+              <option value="mysql">MySQL</option>
+              <option value="postgres">PostgreSQL</option>
+            </select>
+            <span className="hint">Cada projeto usa um: MySQL ou PostgreSQL.</span>
+          </div>
+        </div>
+        <div className="field-row">
+          <div className="field">
+            <label className="field-label" htmlFor="np-db">Versão do {engine === "postgres" ? "PostgreSQL" : "MySQL"}</label>
             <select id="np-db" value={db} onChange={(e) => setDb(e.target.value)}>
               <option value="">Mais recente instalada</option>
-              {props.mysqls.map((m) => (
-                <option key={m.mysqld} value={m.fullVersion}>
-                  MySQL {m.fullVersion}
-                  {m.managed ? "" : " (sistema)"}
-                </option>
-              ))}
+              {engine === "postgres"
+                ? props.postgreses.map((m) => (
+                    <option key={m.postgres} value={m.fullVersion}>
+                      PostgreSQL {m.fullVersion}
+                    </option>
+                  ))
+                : props.mysqls.map((m) => (
+                    <option key={m.mysqld} value={m.fullVersion}>
+                      MySQL {m.fullVersion}
+                      {m.managed ? "" : " (sistema)"}
+                    </option>
+                  ))}
             </select>
             <span className="hint">
-              {props.mysqls.length === 0 ? "Nenhuma versão instalada. " : "Não pode ser trocada depois de criado o banco. "}
+              {(engine === "postgres" ? props.postgreses : props.mysqls).length === 0
+                ? "Nenhuma versão instalada. "
+                : "Tipo e versão ficam fixos depois de criado o banco. "}
               <button type="button" className="link" onClick={props.onManagePhp}>
                 Gerenciar versões
               </button>
+            </span>
+          </div>
+          <div className="field">
+            <span className="field-label" id="np-redis-label">Redis</span>
+            <label className="check" style={{ marginTop: 0, height: 36 }}>
+              <input
+                type="checkbox"
+                aria-labelledby="np-redis-label"
+                checked={redis && props.valkeys.length > 0}
+                disabled={props.valkeys.length === 0}
+                onChange={(e) => setRedis(e.target.checked)}
+              />{" "}
+              Ligar o Redis neste projeto
+            </label>
+            <span className="hint">
+              {props.valkeys.length === 0 ? "O Redis (Valkey) ainda não está instalado. " : "Dá para ligar ou desligar depois. "}
+              {props.valkeys.length === 0 && (
+                <button type="button" className="link" onClick={props.onManagePhp}>
+                  Instalar
+                </button>
+              )}
             </span>
           </div>
         </div>
@@ -460,6 +525,8 @@ function ProjectView(props: {
   project: Project;
   phps: PhpInstall[];
   mysqls: MysqlInstall[];
+  postgreses: PostgresInstall[];
+  valkeys: ValkeyInstall[];
   extras: ExtraStatus[];
   progress: Record<string, InstallProgress>;
   backupsDir: string;
@@ -591,6 +658,8 @@ function Overview(props: {
   project: Project;
   phps: PhpInstall[];
   mysqls: MysqlInstall[];
+  postgreses: PostgresInstall[];
+  valkeys: ValkeyInstall[];
   extras: ExtraStatus[];
   progress: Record<string, InstallProgress>;
   backupsDir: string;
@@ -603,8 +672,17 @@ function Overview(props: {
 }) {
   const { project: p } = props;
   const resolved = resolvePhp(props.phps, p.phpVersion);
-  const resolvedDb = resolveMysql(props.mysqls, p.dbVersion);
+  const isPg = p.dbEngine === "postgres";
+  const dbName = isPg ? "PostgreSQL" : "MySQL";
+  const resolvedDb = isPg
+    ? resolvePostgres(props.postgreses, p.dbVersion)
+    : resolveMysql(props.mysqls, p.dbVersion);
+  const dbInstalls: { key: string; version: string; managed: boolean }[] = isPg
+    ? props.postgreses.map((m) => ({ key: m.postgres, version: m.fullVersion, managed: true }))
+    : props.mysqls.map((m) => ({ key: m.mysqld, version: m.fullVersion, managed: m.managed }));
   const dbLocked = props.locked || p.dbInitialized;
+  const changeDb = (engine: DbEngine, version: string) =>
+    api.setDatabase(p.id, engine, version).then(props.onChanged).catch((err) => props.onError(errMsg(err)));
 
   async function del() {
     const ok = await askConfirm({
@@ -665,36 +743,43 @@ function Overview(props: {
 
         <Tile
           icon="database"
-          label="MySQL"
+          label={dbName}
           value={resolvedDb ? resolvedDb.fullVersion : "—"}
           sub={`porta ${p.dbPort}`}
           hint={
             !resolvedDb ? (
               <span className="err-text">
-                Nenhum MySQL instalado.{" "}
+                Nenhum {dbName} instalado.{" "}
                 <button className="link" onClick={props.onManage}>
                   Instalar
                 </button>
               </span>
             ) : p.dbInitialized ? (
-              "Banco já criado: a versão não pode mais ser trocada."
+              "Banco já criado: o tipo e a versão não podem mais ser trocados."
             ) : props.locked ? (
-              "Pare o projeto para trocar a versão."
+              "Pare o projeto para trocar o banco."
             ) : null
           }
         >
           <select
-            aria-label="Versão do MySQL"
+            aria-label="Tipo de banco de dados"
             disabled={dbLocked}
-            value={props.mysqls.some((m) => m.fullVersion === p.dbVersion) ? p.dbVersion : ""}
-            onChange={(e) =>
-              api.setDbVersion(p.id, e.target.value).then(props.onChanged).catch((err) => props.onError(errMsg(err)))
-            }
+            value={p.dbEngine}
+            onChange={(e) => changeDb(e.target.value as DbEngine, "")}
+          >
+            <option value="mysql">MySQL</option>
+            <option value="postgres">PostgreSQL</option>
+          </select>
+          <select
+            aria-label={`Versão do ${dbName}`}
+            disabled={dbLocked}
+            value={dbInstalls.some((m) => m.version === p.dbVersion) ? p.dbVersion : ""}
+            onChange={(e) => changeDb(p.dbEngine, e.target.value)}
           >
             <option value="">Mais recente</option>
-            {props.mysqls.map((m) => (
-              <option key={m.mysqld} value={m.fullVersion}>
-                MySQL {m.fullVersion}
+            {dbInstalls.map((m) => (
+              <option key={m.key} value={m.version}>
+                {dbName} {m.version}
                 {m.managed ? "" : " (sistema)"}
               </option>
             ))}
@@ -728,7 +813,8 @@ function Overview(props: {
           </dl>
           <p className="hint">
             No PHP: <code>DB_HOST</code> <code>DB_PORT</code> <code>DB_NAME</code> <code>DB_USER</code>{" "}
-            <code>DB_PASSWORD</code>.
+            <code>DB_PASSWORD</code>, mais <code>DB_ENGINE</code> e <code>DB_CONNECTION</code> ({isPg ? "pgsql" : "mysql"}).
+            {isPg && " Use pdo_pgsql ou pgsql; no terminal do projeto, o psql já conecta."}
           </p>
         </section>
 
@@ -775,6 +861,16 @@ function Overview(props: {
 
       <div className="cols">
         <AccessPanel project={p} onChanged={props.onChanged} onError={props.onError} />
+      </div>
+
+      <div className="cols">
+        <RedisPanel
+          project={p}
+          valkeys={props.valkeys}
+          onManage={props.onManage}
+          onChanged={props.onChanged}
+          onError={props.onError}
+        />
       </div>
 
       <div className="cols">

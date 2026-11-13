@@ -1,8 +1,11 @@
 //! Motor: gera as configs de cada projeto e controla os processos
-//! (MySQL, PHP-FPM e Caddy) sem Docker.
+//! (MySQL ou PostgreSQL, Redis/Valkey, PHP-FPM e Caddy) sem Docker.
 
 use crate::extras;
 use crate::mysql_manager;
+use crate::php_manager;
+use crate::postgres_manager;
+use crate::valkey_manager;
 use crate::project::{self, DB_PASSWORD, DB_USER, Project};
 use crate::tools;
 use std::fs::{self, File};
@@ -16,6 +19,9 @@ pub struct Service {
     /// Arquivo de log (em `logs/`) usado para explicar falhas.
     pub log: &'static str,
     pub child: Child,
+    /// Para com SIGINT em vez de SIGTERM. O PostgreSQL trata SIGTERM como "desligamento
+    /// inteligente" e espera todos os clientes saírem; SIGINT desliga rápido e com segurança.
+    pub fast_stop: bool,
 }
 
 /// O que ficou disponível quando o projeto foi iniciado.
@@ -48,6 +54,8 @@ struct Layout {
     logs: PathBuf,
     run: PathBuf,
     mysql_data: PathBuf,
+    pg_data: PathBuf,
+    redis_data: PathBuf,
 }
 
 impl Layout {
@@ -59,6 +67,8 @@ impl Layout {
             logs: root.join("logs"),
             run: root.join("run"),
             mysql_data: root.join("data").join("mysql"),
+            pg_data: root.join("data").join("postgres"),
+            redis_data: root.join("data").join("redis"),
         }
     }
 
@@ -100,11 +110,28 @@ pub fn scaffold(base: &Path, p: &Project) -> Result<(), String> {
 const SAMPLE_INDEX: &str = r#"<?php
 $db = ['host' => getenv('DB_HOST'), 'port' => getenv('DB_PORT'), 'name' => getenv('DB_NAME'),
        'user' => getenv('DB_USER'), 'pass' => getenv('DB_PASSWORD')];
+$postgres = getenv('DB_ENGINE') === 'postgres';
 try {
-    $pdo = new PDO("mysql:host={$db['host']};port={$db['port']};dbname={$db['name']}", $db['user'], $db['pass']);
-    $dbStatus = 'conectado (MySQL ' . $pdo->query('SELECT VERSION()')->fetchColumn() . ')';
+    if ($postgres) {
+        $pdo = new PDO("pgsql:host={$db['host']};port={$db['port']};dbname={$db['name']}", $db['user'], $db['pass']);
+        $dbStatus = 'conectado (PostgreSQL ' . $pdo->query('SHOW server_version')->fetchColumn() . ')';
+    } else {
+        $pdo = new PDO("mysql:host={$db['host']};port={$db['port']};dbname={$db['name']}", $db['user'], $db['pass']);
+        $dbStatus = 'conectado (MySQL ' . $pdo->query('SELECT VERSION()')->fetchColumn() . ')';
+    }
 } catch (Throwable $e) {
     $dbStatus = 'erro: ' . $e->getMessage();
+}
+$redisStatus = null;
+if (getenv('REDIS_HOST')) {
+    try {
+        $redis = new Redis();
+        $redis->connect(getenv('REDIS_HOST'), (int) getenv('REDIS_PORT'));
+        $info = $redis->info();
+        $redisStatus = 'conectado (Valkey ' . ($info['valkey_version'] ?? $info['redis_version'] ?? '?') . ')';
+    } catch (Throwable $e) {
+        $redisStatus = 'erro: ' . $e->getMessage();
+    }
 }
 ?><!doctype html>
 <html lang="pt-br"><head><meta charset="utf-8"><title>LocalTusk</title>
@@ -112,9 +139,9 @@ try {
 code{background:#eee;padding:2px 6px;border-radius:4px}</style></head>
 <body>
 <h1>🚀 Seu projeto está rodando no LocalTusk</h1>
-<p>PHP <strong><?= PHP_VERSION ?></strong> &middot; Banco: <strong><?= htmlspecialchars($dbStatus) ?></strong></p>
+<p>PHP <strong><?= PHP_VERSION ?></strong> &middot; Banco: <strong><?= htmlspecialchars($dbStatus) ?></strong><?php if ($redisStatus !== null): ?> &middot; Redis: <strong><?= htmlspecialchars($redisStatus) ?></strong><?php endif ?></p>
 <p>Edite <code>app/<?= htmlspecialchars(basename(__DIR__) === 'app' ? '' : basename(__DIR__) . '/') ?>index.php</code> para começar.</p>
-<p>Variáveis disponíveis: <code>DB_HOST</code>, <code>DB_PORT</code>, <code>DB_NAME</code>, <code>DB_USER</code>, <code>DB_PASSWORD</code>.</p>
+<p>Variáveis disponíveis: <code>DB_HOST</code>, <code>DB_PORT</code>, <code>DB_NAME</code>, <code>DB_USER</code>, <code>DB_PASSWORD</code> e, com o Redis ligado, <code>REDIS_HOST</code> e <code>REDIS_PORT</code>.</p>
 </body></html>
 "#;
 
@@ -141,8 +168,10 @@ struct Extras {
 
 fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(), String> {
     let socket = l.mysql_socket(p);
+    let postgres = project::is_postgres(p);
 
     // --- MySQL ---
+    if !postgres {
     write(
         &l.conf.join("my.cnf"),
         format!(
@@ -177,6 +206,12 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
             db = p.db_name
         ),
     )?;
+    }
+
+    // --- Redis (Valkey) ---
+    if project::redis_on(p) {
+        write(&l.conf.join("valkey.conf"), render_valkey_conf(p, &q(&l.redis_data)))?;
+    }
 
     // --- PHP ---
     // PHP estático não conhece o repositório de certificados do sistema.
@@ -221,7 +256,7 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
              mysqli.default_port={port}\n",
             logs = q(&l.logs),
             sock = q(&socket),
-            port = p.db_port,
+            port = if postgres { 3306 } else { p.db_port },
             cacert = cacert,
             mail_ini = mail_ini,
             capture = q(&capture)
@@ -232,9 +267,24 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
          env[DB_PORT] = {}\n\
          env[DB_NAME] = {}\n\
          env[DB_USER] = {}\n\
-         env[DB_PASSWORD] = {}\n",
-        p.db_port, p.db_name, DB_USER, DB_PASSWORD
+         env[DB_PASSWORD] = {}\n\
+         env[DB_ENGINE] = {}\n\
+         env[DB_CONNECTION] = {}\n",
+        p.db_port,
+        p.db_name,
+        DB_USER,
+        DB_PASSWORD,
+        project::engine_of(p),
+        if postgres { "pgsql" } else { "mysql" },
     );
+    if project::redis_on(p) {
+        env_lines.push_str(&format!(
+            "env[REDIS_HOST] = 127.0.0.1\n\
+             env[REDIS_PORT] = {port}\n\
+             env[REDIS_URL] = redis://127.0.0.1:{port}\n",
+            port = p.redis_port
+        ));
+    }
     if let Some(m) = &x.mail {
         env_lines.push_str(&format!(
             "env[MAIL_HOST] = 127.0.0.1\n\
@@ -275,6 +325,26 @@ fn write_configs(l: &Layout, p: &Project, fpm_port: u16, x: &Extras) -> Result<(
         &project::lan_hosts(),
     );
     write(&l.conf.join("Caddyfile"), caddyfile)
+}
+
+/// Configuração do Valkey do projeto: só escuta em 127.0.0.1 (nunca na rede), grava um
+/// instantâneo em disco de vez em quando e mantém a linha de comando original no `ps`
+/// (assim o app reconhece e encerra um Valkey órfão pela pasta do projeto).
+fn render_valkey_conf(p: &Project, data: &str) -> String {
+    format!(
+        "bind 127.0.0.1\n\
+         port {port}\n\
+         protected-mode yes\n\
+         daemonize no\n\
+         set-proc-title no\n\
+         dir \"{data}\"\n\
+         dbfilename dump.rdb\n\
+         save 900 1\n\
+         save 300 10\n\
+         save 60 10000\n\
+         appendonly no\n",
+        port = p.redis_port
+    )
 }
 
 /// Caddyfile do projeto.
@@ -379,8 +449,9 @@ fn spawn(l: &Layout, mut cmd: Command, log: &str) -> Result<Child, String> {
 
 /// `true` se o banco do projeto já foi criado (a versão do MySQL fica "travada" a partir daí).
 pub fn db_initialized(base: &Path, id: &str) -> bool {
-    let data = project::project_dir(base, id).join("data").join("mysql");
-    data.join("mysql.ibd").exists() || data.join("mysql").exists()
+    let data = project::project_dir(base, id).join("data");
+    let mysql = data.join("mysql");
+    mysql.join("mysql.ibd").exists() || mysql.join("mysql").exists() || data.join("postgres").join("PG_VERSION").exists()
 }
 
 fn mysql_initialized(l: &Layout) -> bool {
@@ -406,6 +477,98 @@ fn init_mysql(l: &Layout, mysqld: &Path) -> Result<(), String> {
         let _ = fs::remove_dir_all(&l.mysql_data);
         let log = tail(&l.logs.join("mysql-init.log"), 6);
         Err(format!("falha ao inicializar o MySQL ({status})\n\n{log}"))
+    }
+}
+
+fn pg_initialized(l: &Layout) -> bool {
+    l.pg_data.join("PG_VERSION").exists()
+}
+
+/// Cria o diretório de dados do PostgreSQL: superusuário `root` com a senha padrão do app
+/// e autenticação por senha (SCRAM) nas conexões TCP.
+fn init_postgres(l: &Layout, initdb: &Path) -> Result<(), String> {
+    fs::create_dir_all(&l.pg_data).map_err(|e| e.to_string())?;
+    let pwfile = l.conf.join("pg-pass");
+    write(&pwfile, format!("{DB_PASSWORD}\n"))?;
+    let log = log_file(l, "postgres-init.log")?;
+
+    // Prefere a coleção de textos en_US.UTF-8; se o sistema não tiver, cai para "C".
+    let mut last = None;
+    for locale in ["en_US.UTF-8", "C"] {
+        let _ = fs::remove_dir_all(&l.pg_data);
+        fs::create_dir_all(&l.pg_data).map_err(|e| e.to_string())?;
+        let status = Command::new(initdb)
+            .arg("-D")
+            .arg(&l.pg_data)
+            .args(["-U", DB_USER, "-A", "scram-sha-256", "-E", "UTF8"])
+            .arg(format!("--locale={locale}"))
+            .arg(format!("--pwfile={}", q(&pwfile)))
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
+            .stderr(Stdio::from(log.try_clone().map_err(|e| e.to_string())?))
+            .status()
+            .map_err(|e| format!("initdb: {e}"))?;
+        if status.success() {
+            let _ = fs::remove_file(&pwfile);
+            return Ok(());
+        }
+        last = Some(status);
+    }
+    // Evita deixar um diretório pela metade, que impediria uma nova tentativa.
+    let _ = fs::remove_dir_all(&l.pg_data);
+    let _ = fs::remove_file(&pwfile);
+    let log = tail(&l.logs.join("postgres-init.log"), 6);
+    Err(format!("falha ao inicializar o PostgreSQL ({})\n\n{log}", last.map(|s| s.to_string()).unwrap_or_default()))
+}
+
+/// Roda um comando SQL no PostgreSQL do projeto (via TCP, com a senha padrão).
+fn psql(psql: &Path, port: u16, db: &str, sql: &str) -> Result<String, String> {
+    let out = Command::new(psql)
+        .env("PGPASSWORD", DB_PASSWORD)
+        .args(["-h", "127.0.0.1", "-p", &port.to_string(), "-U", DB_USER, "-d", db, "-X", "-tA", "-v", "ON_ERROR_STOP=1", "-c", sql])
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("psql: {e}"))?;
+    if out.status.success() {
+        Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+/// Cria o banco do projeto se ainda não existir. Logo depois de abrir a porta o PostgreSQL
+/// pode estar terminando de iniciar, então tenta de novo por alguns segundos.
+fn ensure_pg_database(running: &mut Running, l: &Layout, psql_bin: &Path, p: &Project) -> Result<(), String> {
+    let start = Instant::now();
+    loop {
+        let attempt = psql(
+            psql_bin,
+            p.db_port,
+            "postgres",
+            &format!("SELECT 1 FROM pg_database WHERE datname = '{}'", p.db_name),
+        )
+        .and_then(|found| {
+            if found == "1" {
+                Ok(())
+            } else {
+                psql(psql_bin, p.db_port, "postgres", &format!("CREATE DATABASE \"{}\"", p.db_name)).map(|_| ())
+            }
+        });
+        match attempt {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                for s in running.services.iter_mut() {
+                    if let Ok(Some(status)) = s.child.try_wait() {
+                        let log = tail(&l.logs.join(s.log), 6);
+                        return Err(format!("{} encerrou inesperadamente ({status})\n\n{log}", s.name));
+                    }
+                }
+                if start.elapsed() > Duration::from_secs(30) {
+                    return Err(format!("não foi possível criar o banco no PostgreSQL: {e}"));
+                }
+                std::thread::sleep(Duration::from_millis(250));
+            }
+        }
     }
 }
 
@@ -458,16 +621,46 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
     scaffold(base, p)?;
     fs::create_dir_all(crate::ssl::data_home(base)).map_err(|e| e.to_string())?;
 
+    let postgres = project::is_postgres(p);
     let php = tools::pick_php(base, &p.php_version)
         .ok_or("PHP não encontrado. Instale uma versão em \"PHP e ferramentas\".")?;
+    // Com PostgreSQL o PHP precisa do `pdo_pgsql`: usa (e baixa, se faltar) o pacote "common".
+    let php_fpm = php_manager::fpm_for(base, &php, postgres)?;
     let caddy = extras::caddy_bin(base)
         .or_else(|| tools::find("caddy", base))
         .ok_or("Caddy não encontrado. Instale em \"PHP e ferramentas\".")?;
-    let mysqld = mysql_manager::pick(base, &p.db_version)
-        .ok_or("MySQL não encontrado. Instale uma versão em \"PHP e ferramentas\".")?
-        .mysqld;
+    let mysqld = if postgres {
+        PathBuf::new()
+    } else {
+        mysql_manager::pick(base, &p.db_version)
+            .ok_or("MySQL não encontrado. Instale uma versão em \"PHP e ferramentas\".")?
+            .mysqld
+    };
+    let pg = if postgres {
+        Some(
+            postgres_manager::pick(base, &p.db_version)
+                .ok_or("PostgreSQL não encontrado. Instale uma versão em \"PHP e ferramentas\".")?,
+        )
+    } else {
+        None
+    };
+    let valkey = if project::redis_on(p) {
+        Some(
+            valkey_manager::pick(base)
+                .ok_or("Redis (Valkey) não encontrado. Instale-o em \"PHP e ferramentas\" ou desligue o Redis deste projeto.")?,
+        )
+    } else {
+        None
+    };
 
-    let has_neo = extras::is_installed(base, "adminneo");
+    let mut has_neo = extras::is_installed(base, "adminneo");
+    if has_neo {
+        extras::refresh_adminneo_files(base);
+        // Instalações antigas só tinham o driver do MySQL: baixa o do PostgreSQL na primeira vez.
+        if postgres && !extras::adminneo_has_pg(base) && extras::add_adminneo_pg(base).is_err() {
+            has_neo = false;
+        }
+    }
     let mailpit = extras::mailpit_bin(base);
     let ports = project::ephemeral_ports(4).ok_or("sem portas livres")?;
     let fpm_port = ports[0];
@@ -482,8 +675,16 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
     };
 
     write_configs(&l, p, fpm_port, &x)?;
-    if !mysql_initialized(&l) {
+    if let Some(pg) = &pg {
+        if !pg_initialized(&l) {
+            let initdb = pg.tool("initdb").ok_or("o PostgreSQL instalado não inclui o initdb")?;
+            init_postgres(&l, &initdb)?;
+        }
+    } else if !mysql_initialized(&l) {
         init_mysql(&l, &mysqld)?;
+    }
+    if valkey.is_some() {
+        fs::create_dir_all(&l.redis_data).map_err(|e| e.to_string())?;
     }
 
     let mut running = Running {
@@ -509,18 +710,52 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
                 name: "Mailpit",
                 log: "mailpit.log",
                 child: spawn(&l, c, "mailpit.log")?,
+                fast_stop: false,
             });
         }
 
-        let mut c = Command::new(&mysqld);
-        c.arg(format!("--defaults-file={}", q(&l.conf.join("my.cnf"))));
-        running.services.push(Service {
-            name: "MySQL",
-            log: "mysql.log",
-            child: spawn(&l, c, "mysql-stdout.log")?,
-        });
+        if let Some(pg) = &pg {
+            // Só escuta em 127.0.0.1 e sem socket Unix (o limite de caminho do macOS é curto):
+            // tudo conecta por TCP.
+            let mut c = Command::new(&pg.postgres);
+            c.arg("-D")
+                .arg(&l.pg_data)
+                .args(["-p", &p.db_port.to_string()])
+                .args(["-c", "listen_addresses=127.0.0.1"])
+                .args(["-c", "unix_socket_directories="])
+                .args(["-c", "max_connections=50"])
+                .args(["-c", "shared_buffers=64MB"])
+                .args(["-c", "jit=off"])
+                .args(["-c", "timezone=UTC"]);
+            running.services.push(Service {
+                name: "PostgreSQL",
+                log: "postgres.log",
+                child: spawn(&l, c, "postgres.log")?,
+                fast_stop: true,
+            });
+        } else {
+            let mut c = Command::new(&mysqld);
+            c.arg(format!("--defaults-file={}", q(&l.conf.join("my.cnf"))));
+            running.services.push(Service {
+                name: "MySQL",
+                log: "mysql.log",
+                child: spawn(&l, c, "mysql-stdout.log")?,
+                fast_stop: false,
+            });
+        }
 
-        let mut c = Command::new(&php.fpm);
+        if let Some(v) = &valkey {
+            let mut c = Command::new(&v.server);
+            c.arg(l.conf.join("valkey.conf"));
+            running.services.push(Service {
+                name: "Redis",
+                log: "valkey.log",
+                child: spawn(&l, c, "valkey.log")?,
+                fast_stop: false,
+            });
+        }
+
+        let mut c = Command::new(&php_fpm);
         c.arg("-F")
             .arg("-y")
             .arg(l.conf.join("php-fpm.conf"))
@@ -530,6 +765,7 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
             name: "PHP-FPM",
             log: "php-fpm.log",
             child: spawn(&l, c, "php-fpm-stdout.log")?,
+            fast_stop: false,
         });
 
         let mut c = Command::new(&caddy);
@@ -545,9 +781,18 @@ pub fn start(base: &Path, p: &Project) -> Result<Running, String> {
             name: "Caddy",
             log: "caddy.log",
             child: spawn(&l, c, "caddy.log")?,
+            fast_stop: false,
         });
 
-        wait_port(p.db_port, Duration::from_secs(90), &mut running, &l.logs, "MySQL")?;
+        let db_name = if postgres { "PostgreSQL" } else { "MySQL" };
+        wait_port(p.db_port, Duration::from_secs(90), &mut running, &l.logs, db_name)?;
+        if let Some(pg) = &pg {
+            let psql_bin = pg.tool("psql").ok_or("o PostgreSQL instalado não inclui o psql")?;
+            ensure_pg_database(&mut running, &l, &psql_bin, p)?;
+        }
+        if valkey.is_some() {
+            wait_port(p.redis_port, Duration::from_secs(20), &mut running, &l.logs, "Redis")?;
+        }
         wait_port(fpm_port, Duration::from_secs(20), &mut running, &l.logs, "PHP-FPM")?;
         wait_port(p.http_port, Duration::from_secs(20), &mut running, &l.logs, "Caddy")?;
         if project::https_on(p) {
@@ -583,7 +828,7 @@ pub fn project_processes(base: &Path, id: &str) -> Vec<(i32, String)> {
     parse_ps(&String::from_utf8_lossy(&out.stdout), &needle, std::process::id() as i32)
 }
 
-/// Filtra a listagem do `ps` (`pid comando` por linha): só mysqld, caddy, mailpit e php-fpm
+/// Filtra a listagem do `ps` (`pid comando` por linha): só mysqld, postgres, valkey-server, caddy, mailpit e php-fpm
 /// cuja linha de comando cita a pasta do projeto (`needle`). Ignora o próprio processo (`me`).
 fn parse_ps(listing: &str, needle: &str, me: i32) -> Vec<(i32, String)> {
     listing
@@ -595,7 +840,7 @@ fn parse_ps(listing: &str, needle: &str, me: i32) -> Vec<(i32, String)> {
             let cmd = cmd.trim_start();
             let exe = cmd.split_whitespace().next().unwrap_or("");
             let name = exe.rsplit('/').next().unwrap_or("");
-            let ours = matches!(name, "mysqld" | "caddy" | "mailpit") || cmd.starts_with("php-fpm:");
+            let ours = matches!(name, "mysqld" | "postgres" | "valkey-server" | "caddy" | "mailpit") || cmd.starts_with("php-fpm:");
             (pid != me && ours && cmd.contains(needle)).then(|| (pid, cmd.to_string()))
         })
         .collect()
@@ -607,12 +852,20 @@ pub fn reap_orphans(base: &Path, id: &str) -> usize {
     kill_processes(&project_processes(base, id))
 }
 
+/// Sinal para encerrar o processo de uma linha de comando do `ps`: SIGINT (desligamento
+/// rápido) para o PostgreSQL, SIGTERM para os demais.
+#[cfg(unix)]
+fn stop_signal(cmd: &str) -> i32 {
+    let exe = cmd.split_whitespace().next().unwrap_or("");
+    if exe.rsplit('/').next() == Some("postgres") { libc::SIGINT } else { libc::SIGTERM }
+}
+
 /// Encerra os processos informados (SIGTERM, depois SIGKILL após 20s). Retorna quantos eram.
 #[cfg(unix)]
 pub fn kill_processes(found: &[(i32, String)]) -> usize {
-    for (pid, _) in found {
+    for (pid, cmd) in found {
         unsafe {
-            libc::kill(*pid, libc::SIGTERM);
+            libc::kill(*pid, stop_signal(cmd));
         }
     }
     let deadline = Instant::now() + Duration::from_secs(20);
@@ -645,19 +898,19 @@ pub fn kill_processes(_found: &[(i32, String)]) -> usize {
 }
 
 #[cfg(unix)]
-fn terminate(child: &Child) {
+fn terminate(child: &Child, fast: bool) {
     unsafe {
-        libc::kill(child.id() as i32, libc::SIGTERM);
+        libc::kill(child.id() as i32, if fast { libc::SIGINT } else { libc::SIGTERM });
     }
 }
 
 #[cfg(not(unix))]
-fn terminate(_child: &Child) {}
+fn terminate(_child: &Child, _fast: bool) {}
 
-/// Para os serviços em ordem inversa (Caddy, PHP-FPM, MySQL), de forma graciosa.
+/// Para os serviços em ordem inversa (Caddy, PHP-FPM, Redis, banco), de forma graciosa.
 pub fn stop(running: &mut Running) {
     for s in running.services.iter_mut().rev() {
-        terminate(&s.child);
+        terminate(&s.child, s.fast_stop);
         let deadline = Instant::now() + Duration::from_secs(20);
         loop {
             match s.child.try_wait() {
@@ -682,6 +935,8 @@ pub const LOG_FILES: &[&str] = &[
     "php-error.log",
     "php-fpm.log",
     "mysql.log",
+    "postgres.log",
+    "valkey.log",
     "mailpit.log",
     "wp-cli.log",
 ];
@@ -1130,6 +1385,217 @@ mod tests {
 
         assert!(db_initialized(&base, "stack"));
         let _ = fs::remove_dir_all(&base);
+    }
+
+    /// PostgreSQL + Redis (Valkey) de ponta a ponta, tudo gerenciado pelo app: instala Caddy, PHP,
+    /// PostgreSQL e Valkey (compilado) numa pasta de cache, sobe um projeto e conversa com os dois
+    /// pelo PHP. Confere também o PHP "common" (pdo_pgsql) baixado sozinho, backup e restauração com
+    /// pg_dump/psql, persistência entre reinícios, os atalhos do terminal e o encerramento de
+    /// serviços órfãos. Baixa ~250 MB na primeira vez (cache em /tmp/localtusk-test-pgredis).
+    /// Rode com: `cargo test --lib postgres_redis_end_to_end -- --ignored --nocapture`
+    #[test]
+    #[ignore]
+    fn postgres_redis_end_to_end() {
+        let base = std::env::temp_dir().join("localtusk-test-pgredis");
+        let _ = fs::remove_dir_all(base.join("projects"));
+        let _ = fs::remove_dir_all(base.join("backups"));
+        let show = |p: InstallProgress| {
+            if p.stage != "download" {
+                println!("  [{}] {} {}", p.id, p.stage, p.message.unwrap_or_default());
+            }
+        };
+
+        // --- Ferramentas ---
+        if !extras::is_installed(&base, "caddy") {
+            extras::install(&base, "caddy", &show).expect("caddy");
+        }
+        let t = Instant::now();
+        let pg_cat = postgres_manager::catalog(&base).expect("catálogo do PostgreSQL");
+        assert!(t.elapsed() < Duration::from_millis(200), "o catálogo deveria ser instantâneo (embutido)");
+        let pg_ver = pg_cat.iter().find(|r| r.major == "16").expect("PostgreSQL 16").version.clone();
+        if postgres_manager::pick(&base, "16").is_none_or(|i| i.full_version != pg_ver) {
+            postgres_manager::install(&base, &pg_ver, &show).expect("postgresql");
+        }
+        let pg = postgres_manager::pick(&base, "16").unwrap();
+        println!(
+            "PostgreSQL {} instalado: {} MB em disco",
+            pg.full_version,
+            dir_size(&postgres_manager::install_dir(&base, &pg.full_version)) / 1024 / 1024
+        );
+        for tool in ["postgres", "initdb", "psql", "pg_dump", "pg_restore"] {
+            assert!(pg.tool(tool).is_some(), "faltou {tool}");
+        }
+        if valkey_manager::pick(&base).is_none() {
+            let t = Instant::now();
+            valkey_manager::install(&base, valkey_manager::VERSION, &show).expect("valkey");
+            println!("Valkey compilado em {:?}", t.elapsed());
+        }
+        assert!(valkey_manager::pick(&base).unwrap().cli().is_some());
+        if tools::pick_php(&base, "8.3").is_none_or(|i| !i.managed) {
+            let pcat = crate::php_manager::catalog(&base).expect("catálogo do PHP");
+            let php = pcat.iter().find(|r| r.minor == "8.3" && r.latest).expect("php 8.3").version.clone();
+            crate::php_manager::install(&base, &php, &show).expect("php");
+        }
+        let php = tools::pick_php(&base, "8.3").unwrap();
+        // Começa sem o PHP "common", para provar o download automático no primeiro start.
+        let _ = fs::remove_file(install_dir_of(&base, &php.full_version, "php-fpm-pg"));
+        let _ = fs::remove_file(install_dir_of(&base, &php.full_version, "php-pg"));
+
+        // --- Projeto ---
+        let http = project::free_port(18500, &Default::default()).unwrap();
+        let db = project::free_port(15433, &Default::default()).unwrap();
+        let redis = project::free_port(16380, &Default::default()).unwrap();
+        let p = Project {
+            id: "pgredis".into(),
+            name: "PG Redis".into(),
+            php_version: "8.3".into(),
+            db_engine: "postgres".into(),
+            db_version: "16".into(),
+            http_port: http,
+            db_port: db,
+            db_name: "pgredis".into(),
+            redis: true,
+            redis_port: redis,
+            ..Default::default()
+        };
+        scaffold(&base, &p).unwrap();
+        fs::write(
+            docroot_dir(&base, &p).join("index.php"),
+            r#"<?php
+$pdo = new PDO('pgsql:host=' . getenv('DB_HOST') . ';port=' . getenv('DB_PORT') . ';dbname=' . getenv('DB_NAME'), getenv('DB_USER'), getenv('DB_PASSWORD'));
+$pdo->exec('CREATE TABLE IF NOT EXISTS notas (id serial PRIMARY KEY, texto text)');
+if (isset($_GET['add'])) { $pdo->prepare('INSERT INTO notas (texto) VALUES (?)')->execute([$_GET['add']]); }
+$r = new Redis();
+$r->connect(getenv('REDIS_HOST'), (int) getenv('REDIS_PORT'));
+if (isset($_GET['set'])) { $r->set('chave', $_GET['set']); }
+echo 'engine=' . getenv('DB_ENGINE') . ' conn=' . getenv('DB_CONNECTION') . "\n";
+echo 'pg=' . $pdo->query('SHOW server_version')->fetchColumn() . "\n";
+echo 'notas=' . implode(',', $pdo->query('SELECT texto FROM notas ORDER BY id')->fetchAll(PDO::FETCH_COLUMN)) . "\n";
+echo 'redis=' . ($r->get('chave') ?: '-') . "\n";
+echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
+"#,
+        )
+        .unwrap();
+
+        let t = Instant::now();
+        let mut running = start(&base, &p).expect("start falhou");
+        println!("start (com download do PHP common) em {:?}", t.elapsed());
+        assert!(crate::php_manager::pg_fpm(&base, &php.full_version).is_some(), "o PHP common deveria ter sido baixado");
+        assert!(crate::php_manager::pg_cli(&base, &php.full_version).is_some());
+
+        let body = http_get(http);
+        println!("{}", body.lines().rev().take(6).collect::<Vec<_>>().join(" | "));
+        assert!(body.contains("engine=postgres") && body.contains("conn=pgsql"), "{body}");
+        assert!(body.contains(&format!("pg={}", &pg.full_version[..pg.full_version.rfind('.').unwrap()])), "{body}");
+        assert!(body.contains("ext=pdo_pgsql"), "{body}");
+        assert!(body.contains("notas=\n") && body.contains("redis=-"), "{body}");
+        assert!(!project::port_is_free(db) && !project::port_is_free(redis));
+        // O banco e o Redis só escutam em 127.0.0.1.
+        if let Some(ip) = project::lan_ip() {
+            assert!(TcpStream::connect_timeout(&SocketAddr::from((ip, db)), Duration::from_millis(500)).is_err(), "PostgreSQL exposto na rede");
+            assert!(TcpStream::connect_timeout(&SocketAddr::from((ip, redis)), Duration::from_millis(500)).is_err(), "Redis exposto na rede");
+        }
+
+        // Grava dados nos dois e confere pelo PHP.
+        let body = http_request(http, "GET", "/?add=primeira&set=valor1", "", "");
+        assert!(body.contains("notas=primeira") && body.contains("redis=valor1"), "{body}");
+
+        // A página de exemplo padrão também entende PostgreSQL e Redis.
+        let sample = docroot_dir(&base, &p).join("sample.php");
+        fs::write(&sample, SAMPLE_INDEX).unwrap();
+        let body = http_get_path(http, "/sample.php");
+        assert!(body.contains("PostgreSQL 16") && body.contains("Valkey"), "{body}");
+        let _ = fs::remove_file(&sample);
+
+        // --- Backup e restauração (pg_dump / psql) ---
+        let archive = crate::backup::create(&base, &p, "", "backup-teste", &|_| {}).expect("backup");
+        let manifest = crate::backup::read_manifest(&archive).unwrap();
+        assert_eq!(manifest.db_engine, "postgres");
+        psql(&pg.tool("psql").unwrap(), db, "pgredis", "DROP TABLE notas").expect("drop");
+        crate::backup::restore_into(&base, &p, &archive, "restore-teste", &|_| {}).expect("restore");
+        // restore_into apaga a pasta app/ e traz a do backup de volta (com o index.php do teste).
+        let body = http_get(http);
+        assert!(body.contains("notas=primeira"), "dados não voltaram do backup: {body}");
+        // Um backup de PostgreSQL não entra num projeto MySQL.
+        let mysql_twin = Project { db_engine: String::new(), ..p.clone() };
+        let err = crate::backup::restore_into(&base, &mysql_twin, &archive, "x", &|_| {}).unwrap_err();
+        assert!(err.contains("PostgreSQL") && err.contains("MySQL"), "{err}");
+
+        // --- Terminal: atalhos já ligados ao banco e ao Redis ---
+        let script = crate::wp::prepare_terminal(&base, &p).expect("terminal");
+        let script_text = fs::read_to_string(&script).unwrap();
+        assert!(script_text.contains("export PGPORT=") && script_text.contains("export REDIS_PORT="), "{script_text}");
+        let shims = project::project_dir(&base, &p.id).join("conf").join("shims");
+        let psql_out = Command::new(shims.join("psql"))
+            .env("PGHOST", "127.0.0.1")
+            .env("PGPORT", db.to_string())
+            .env("PGUSER", "root")
+            .env("PGPASSWORD", "root")
+            .env("PGDATABASE", "pgredis")
+            .args(["-tAc", "SELECT count(*) FROM notas"])
+            .output()
+            .unwrap();
+        assert_eq!(String::from_utf8_lossy(&psql_out.stdout).trim(), "1", "{}", String::from_utf8_lossy(&psql_out.stderr));
+        let ping = Command::new(shims.join("redis-cli")).arg("ping").output().unwrap();
+        assert_eq!(String::from_utf8_lossy(&ping.stdout).trim(), "PONG");
+
+        // --- Parar: tudo para e as portas voltam ---
+        let t = Instant::now();
+        stop(&mut running);
+        println!("stop em {:?}", t.elapsed());
+        assert!(t.elapsed() < Duration::from_secs(10), "o PostgreSQL deveria desligar rápido (SIGINT)");
+        assert!(project::port_is_free(http) && project::port_is_free(db) && project::port_is_free(redis));
+        assert!(db_initialized(&base, "pgredis"));
+        let log = fs::read_to_string(project::project_dir(&base, "pgredis").join("logs/postgres.log")).unwrap_or_default();
+        assert!(!log.contains("PANIC") && !log.contains("FATAL:  data directory"), "{log}");
+
+        // --- Segunda subida: os dados persistem (banco e Redis) ---
+        let mut running = start(&base, &p).expect("2º start falhou");
+        let body = http_get(http);
+        assert!(body.contains("notas=primeira") && body.contains("redis=valor1"), "dados não persistiram: {body}");
+
+        // --- Órfãos: um app morto à força deixa os serviços; o próximo start/abertura os encerra ---
+        // Largamos os processos sem pará-los (como um app morto à força); as threads só recolhem
+        // o processo depois que ele sair, para não virar zumbi deste teste.
+        for mut svc in std::mem::take(&mut running.services) {
+            std::thread::spawn(move || {
+                let _ = svc.child.wait();
+            });
+        }
+        let found = project_processes(&base, &p.id);
+        let names: Vec<String> = found.iter().map(|(_, c)| c.split_whitespace().next().unwrap_or("").rsplit('/').next().unwrap_or("").to_string()).collect();
+        println!("órfãos reconhecidos: {names:?}");
+        for expected in ["postgres", "valkey-server", "caddy"] {
+            assert!(names.iter().any(|n| n == expected), "não reconheceu {expected}: {names:?}");
+        }
+        assert!(php_fpm_seen(&found), "não reconheceu o php-fpm");
+        let t = Instant::now();
+        let n = reap_orphans(&base, &p.id);
+        println!("{n} órfãos encerrados em {:?}", t.elapsed());
+        assert!(project::port_is_free(http) && project::port_is_free(db) && project::port_is_free(redis), "ainda há serviços no ar");
+
+        // --- WordPress não é oferecido com PostgreSQL ---
+        let options = crate::wp::WpOptions {
+            title: "Site".into(),
+            admin_user: "admin".into(),
+            admin_password: "senha-forte-123".into(),
+            admin_email: "a@b.co".into(),
+            locale: "en_US".into(),
+            replace_existing: false,
+        };
+        let wp_err = crate::wp::install_wordpress(&base, &p, &options, &|_| {}).unwrap_err();
+        assert!(wp_err.contains("MySQL"), "{wp_err}");
+
+        let _ = fs::remove_dir_all(base.join("projects"));
+        let _ = fs::remove_dir_all(base.join("backups"));
+    }
+
+    fn install_dir_of(base: &Path, version: &str, file: &str) -> PathBuf {
+        crate::php_manager::install_dir(base, version).join(file)
+    }
+
+    fn php_fpm_seen(found: &[(i32, String)]) -> bool {
+        found.iter().any(|(_, c)| c.starts_with("php-fpm:"))
     }
 
     /// Instala o WordPress de verdade (WP-CLI + PHP CLI + MySQL), confere o site e os atalhos

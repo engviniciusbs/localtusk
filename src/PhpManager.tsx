@@ -8,6 +8,10 @@ import {
   MysqlRelease,
   PhpInstall,
   PhpRelease,
+  PostgresInstall,
+  PostgresRelease,
+  ValkeyInstall,
+  ValkeyRelease,
   api,
   formatBytes,
 } from "./api";
@@ -30,6 +34,8 @@ export const isBusy = (p?: InstallProgress) =>
 export default function PhpManager(props: {
   phps: PhpInstall[];
   mysqls: MysqlInstall[];
+  postgreses: PostgresInstall[];
+  valkeys: ValkeyInstall[];
   extras: ExtraStatus[];
   progress: Record<string, InstallProgress>;
   onChanged: () => void;
@@ -39,8 +45,12 @@ export default function PhpManager(props: {
   const [phpError, setPhpError] = useState<string | null>(null);
   const [myCatalog, setMyCatalog] = useState<MysqlRelease[] | null>(null);
   const [myError, setMyError] = useState<string | null>(null);
+  const [pgCatalog, setPgCatalog] = useState<PostgresRelease[] | null>(null);
+  const [pgError, setPgError] = useState<string | null>(null);
+  const [vkCatalog, setVkCatalog] = useState<ValkeyRelease[] | null>(null);
+  const [vkError, setVkError] = useState<string | null>(null);
   const [info, setInfo] = useState<AppInfo | null>(null);
-  const [tab, setTab] = useState<"tools" | "php" | "mysql">("tools");
+  const [tab, setTab] = useState<"tools" | "php" | "mysql" | "postgres" | "redis">("tools");
 
   const loadPhp = useCallback(() => {
     setPhpError(null);
@@ -54,11 +64,25 @@ export default function PhpManager(props: {
     api.mysqlCatalog().then(setMyCatalog).catch((e) => setMyError(errMsg(e)));
   }, []);
 
+  const loadPostgres = useCallback(() => {
+    setPgError(null);
+    setPgCatalog(null);
+    api.postgresCatalog().then(setPgCatalog).catch((e) => setPgError(errMsg(e)));
+  }, []);
+
+  const loadValkey = useCallback(() => {
+    setVkError(null);
+    setVkCatalog(null);
+    api.valkeyCatalog().then(setVkCatalog).catch((e) => setVkError(errMsg(e)));
+  }, []);
+
   useEffect(() => {
     loadPhp();
     loadMysql();
+    loadPostgres();
+    loadValkey();
     api.appInfo().then(setInfo);
-  }, [loadPhp, loadMysql]);
+  }, [loadPhp, loadMysql, loadPostgres, loadValkey]);
 
   // Quando uma instalação termina, atualiza os catálogos (marca como instalada).
   const finished = Object.values(props.progress).filter((p) => p.stage === "done").length;
@@ -66,6 +90,8 @@ export default function PhpManager(props: {
     if (finished > 0) {
       api.phpCatalog().then(setPhpCatalog).catch(() => {});
       api.mysqlCatalog().then(setMyCatalog).catch(() => {});
+      api.postgresCatalog().then(setPgCatalog).catch(() => {});
+      api.valkeyCatalog().then(setVkCatalog).catch(() => {});
     }
   }, [finished]);
 
@@ -78,6 +104,8 @@ export default function PhpManager(props: {
       props.onChanged();
       api.phpCatalog().then(setPhpCatalog).catch(() => {});
       api.mysqlCatalog().then(setMyCatalog).catch(() => {});
+      api.postgresCatalog().then(setPgCatalog).catch(() => {});
+      api.valkeyCatalog().then(setVkCatalog).catch(() => {});
     }
   }
 
@@ -108,6 +136,8 @@ export default function PhpManager(props: {
             ["tools", "Ferramentas", `${installedTools}/${props.extras.length}`],
             ["php", "PHP", String(props.phps.length)],
             ["mysql", "MySQL", String(props.mysqls.length)],
+            ["postgres", "PostgreSQL", String(props.postgreses.length)],
+            ["redis", "Redis", String(props.valkeys.length)],
           ] as const
         ).map(([id, label, count]) => (
           <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "active" : ""} onClick={() => setTab(id)}>
@@ -226,6 +256,105 @@ export default function PhpManager(props: {
               <p className="hint">
                 Binários oficiais da Oracle (Community Server). O banco de um projeto é criado na primeira
                 inicialização e depois não pode trocar de versão — para usar outra, crie um novo projeto.
+              </p>
+            )}
+          </section>
+        </div>
+      )}
+
+      {tab === "postgres" && (
+        <div className="cols">
+          <section className="panel">
+            <h3><Icon name="database" /> Instaladas <span className="count">{props.postgreses.length}</span></h3>
+            {props.postgreses.length === 0 && (
+              <p className="muted">Nenhuma versão instalada ainda. Para começar, recomendamos o PostgreSQL 17 ou 16.</p>
+            )}
+            {props.postgreses.map((m) => (
+              <InstalledRow
+                key={m.postgres}
+                title={`PostgreSQL ${m.fullVersion}`}
+                managed
+                onRemove={async () => {
+                  const ok = await askConfirm({
+                    title: `Remover o PostgreSQL ${m.fullVersion}?`,
+                    message: "Os bancos dos projetos não são apagados.",
+                    confirmLabel: "Remover",
+                    danger: true,
+                  });
+                  if (ok) run(() => api.uninstallPostgres(m.fullVersion));
+                }}
+              />
+            ))}
+          </section>
+
+          <section className="panel">
+            <h3><Icon name="download" /> Disponíveis</h3>
+            <Catalog
+              releases={pgCatalog}
+              error={pgError}
+              onRetry={loadPostgres}
+              groupOf={(r) => (r as PostgresRelease).major}
+              title={(g) => `PostgreSQL ${g}`}
+              rowLabel={(r) => `PostgreSQL ${r.version}`}
+              progressId={(r) => `postgres-${r.version}`}
+              progress={props.progress}
+              onInstall={(v) => run(() => api.installPostgres(v))}
+            />
+            {pgCatalog && (
+              <p className="hint">
+                Binários do projeto theseus-rs/postgresql-binaries. Escolha o PostgreSQL ao criar o projeto: as variáveis{" "}
+                <code>DB_*</code> e o Adminer Neo funcionam como no MySQL. Na primeira vez, o app também baixa o PHP com{" "}
+                <code>pdo_pgsql</code>. O banco não troca de tipo nem de versão depois de criado.
+              </p>
+            )}
+          </section>
+        </div>
+      )}
+
+      {tab === "redis" && (
+        <div className="cols">
+          <section className="panel">
+            <h3><Icon name="database" /> Instalado <span className="count">{props.valkeys.length}</span></h3>
+            {props.valkeys.length === 0 && (
+              <p className="muted">Ainda não instalado. Depois, ligue o Redis em cada projeto que precisar de cache ou filas.</p>
+            )}
+            {props.valkeys.map((m) => (
+              <InstalledRow
+                key={m.server}
+                title={`Valkey ${m.fullVersion}`}
+                managed
+                onRemove={async () => {
+                  const ok = await askConfirm({
+                    title: `Remover o Valkey ${m.fullVersion}?`,
+                    message: "Os dados salvos dos projetos não são apagados.",
+                    confirmLabel: "Remover",
+                    danger: true,
+                  });
+                  if (ok) run(() => api.uninstallValkey(m.fullVersion));
+                }}
+              />
+            ))}
+          </section>
+
+          <section className="panel">
+            <h3><Icon name="download" /> Disponível</h3>
+            <Catalog
+              releases={vkCatalog}
+              error={vkError}
+              onRetry={loadValkey}
+              groupOf={() => "Redis"}
+              title={() => "Redis (Valkey)"}
+              rowLabel={(r) => `Valkey ${r.version}`}
+              progressId={(r) => `valkey-${r.version}`}
+              progress={props.progress}
+              onInstall={(v) => run(() => api.installValkey(v))}
+            />
+            {vkCatalog && (
+              <p className="hint">
+                O Valkey é o sucessor livre do Redis e fala o mesmo protocolo (<code>redis-cli</code>, phpredis, Predis).
+                O app baixa o código-fonte e o compila na sua máquina (cerca de 15 segundos); isso exige as
+                ferramentas de linha de comando do Xcode (<code>xcode-select --install</code>). O Redis escuta só em
+                127.0.0.1.
               </p>
             )}
           </section>
@@ -366,7 +495,7 @@ function ReleaseRow(props: {
       <div className="grow">
         <strong>{props.label}</strong>{" "}
         {props.suffix && <span className="muted small">{props.suffix}</span>}{" "}
-        <span className="muted small">{r.size && `· ${r.size}B`}</span>
+        <span className="muted small">{r.size && `· ${/\d[KMG]$/.test(r.size) ? `${r.size}B` : r.size}`}</span>
         {busy && p && <ProgressView p={p} />}
         {p?.stage === "error" && <div className="small err-text">{p.message}</div>}
       </div>

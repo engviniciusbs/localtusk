@@ -289,6 +289,7 @@ button:disabled, select:disabled, input:disabled { cursor: default; }
 .readout { font: 500 30px/1.15 var(--font-mono); letter-spacing: -0.03em; margin-top: 6px; }
 .tile-sub { font: 400 11.5px var(--font-mono); color: var(--muted); margin-bottom: 8px; }
 .tile select { margin-top: auto; }
+.tile select ~ select { margin-top: 0; }
 .tile .hint { margin-top: 6px; }
 
 .panel {

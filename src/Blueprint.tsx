@@ -49,7 +49,7 @@ export function SaveBlueprintPanel(props: {
         <Icon name="blueprint" /> Salvar como blueprint
       </h3>
       <p className="muted small">
-        Guarda os arquivos, o banco de dados e as versões de PHP e MySQL deste projeto como um modelo, para criar novos
+        Guarda os arquivos, o banco de dados e as versões de PHP e do banco deste projeto como um modelo, para criar novos
         projetos já prontos.
         {!p.running && " Se o projeto estiver parado, ele é ligado só durante o processo."}
       </p>
@@ -227,7 +227,7 @@ export default function BlueprintsView(props: {
                   {b.description && <div className="muted small">{b.description}</div>}
                   <div className="muted small mono">
                     {b.phpVersion ? `PHP ${b.phpVersion}` : "PHP mais recente"} ·{" "}
-                    {b.dbVersion ? `MySQL ${b.dbVersion}` : "MySQL mais recente"}
+                    {b.dbEngine === "postgres" ? "PostgreSQL" : "MySQL"} {b.dbVersion || "mais recente"}
                     {b.hasWordpress ? " · WordPress" : ""} · {formatBytes(b.size)}
                   </div>
                   <div className="muted small">

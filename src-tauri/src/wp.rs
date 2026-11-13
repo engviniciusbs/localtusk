@@ -6,7 +6,7 @@
 
 use crate::download::InstallProgress;
 use crate::project::{self, DB_PASSWORD, DB_USER, Project};
-use crate::{extras, mysql_manager, php_manager, runtime, tools};
+use crate::{extras, mysql_manager, php_manager, postgres_manager, runtime, tools, valkey_manager};
 use serde::Deserialize;
 use std::fs::{self, OpenOptions};
 use std::io::Write;
@@ -122,18 +122,28 @@ fn php_cli(base: &Path, p: &Project, progress: &dyn Fn(InstallProgress)) -> Resu
     if inst.managed {
         php_manager::ensure_cli(base, &inst.full_version, progress)?;
     }
-    inst.cli()
+    // Projetos com PostgreSQL usam o PHP do pacote "common" (com `pdo_pgsql`), se já baixado.
+    php_manager::cli_for(base, &inst, project::is_postgres(p))
         .ok_or_else(|| format!("O PHP {} não tem a versão de linha de comando (CLI).", inst.full_version))
 }
 
 fn project_env(p: &Project) -> Vec<(&'static str, String)> {
-    vec![
+    let postgres = project::is_postgres(p);
+    let mut env = vec![
         ("DB_HOST", "127.0.0.1".into()),
         ("DB_PORT", p.db_port.to_string()),
         ("DB_NAME", p.db_name.clone()),
         ("DB_USER", DB_USER.into()),
         ("DB_PASSWORD", DB_PASSWORD.into()),
-    ]
+        ("DB_ENGINE", project::engine_of(p).into()),
+        ("DB_CONNECTION", if postgres { "pgsql" } else { "mysql" }.into()),
+    ];
+    if project::redis_on(p) {
+        env.push(("REDIS_HOST", "127.0.0.1".into()));
+        env.push(("REDIS_PORT", p.redis_port.to_string()));
+        env.push(("REDIS_URL", format!("redis://127.0.0.1:{}", p.redis_port)));
+    }
+    env
 }
 
 /// Argumentos do PHP CLI que o deixam igual ao PHP do site.
@@ -317,6 +327,9 @@ pub fn install_wordpress(
     o: &WpOptions,
     progress: &dyn Fn(InstallProgress),
 ) -> Result<(), String> {
+    if project::is_postgres(p) {
+        return Err("O WordPress só funciona com MySQL. Crie o projeto com MySQL para instalá-lo.".into());
+    }
     validate(o)?;
     prepare_docroot(base, p, o.replace_existing)?;
 
@@ -466,8 +479,38 @@ pub(crate) fn prepare_terminal(base: &Path, p: &Project) -> Result<PathBuf, Stri
         ),
     )?;
 
+    // Clientes do PostgreSQL: o terminal exporta `PGHOST`, `PGPORT`, `PGUSER`, `PGPASSWORD` e
+    // `PGDATABASE`, então os atalhos só precisam apontar para os executáveis.
+    if project::is_postgres(p) {
+        if let Some(pg) = postgres_manager::pick(base, &p.db_version) {
+            for tool in ["psql", "pg_dump", "pg_dumpall", "pg_restore", "createdb", "pg_isready"] {
+                if let Some(real) = pg.tool(tool) {
+                    write_exec(&shims.join(tool), &format!("#!/bin/sh\nexec {} \"$@\"\n", sh_quote(&real.display().to_string())))?;
+                }
+            }
+        }
+    }
+
+    // Cliente do Redis (Valkey) já ligado ao Redis do projeto.
+    if project::redis_on(p) {
+        if let Some(cli) = valkey_manager::pick(base).and_then(|v| v.cli()) {
+            let script = format!(
+                "#!/bin/sh\nexec {} -h 127.0.0.1 -p {} \"$@\"\n",
+                sh_quote(&cli.display().to_string()),
+                p.redis_port
+            );
+            write_exec(&shims.join("redis-cli"), &script)?;
+            write_exec(&shims.join("valkey-cli"), &script)?;
+        }
+    }
+
     // Clientes do MySQL já ligados ao banco do projeto (se houver MySQL instalado).
-    if let Some(bin_dir) = mysql_manager::pick(base, &p.db_version).and_then(|i| i.mysqld.parent().map(Path::to_path_buf)) {
+    let mysql_bin_dir = if project::is_postgres(p) {
+        None
+    } else {
+        mysql_manager::pick(base, &p.db_version).and_then(|i| i.mysqld.parent().map(Path::to_path_buf))
+    };
+    if let Some(bin_dir) = mysql_bin_dir {
         for tool in ["mysql", "mysqldump", "mysqladmin"] {
             let real = bin_dir.join(tool);
             if real.is_file() {
@@ -513,12 +556,23 @@ pub(crate) fn prepare_terminal(base: &Path, p: &Project) -> Result<PathBuf, Stri
     for (k, v) in project_env(p) {
         script.push_str(&format!("export {k}={}\n", sh_quote(&v)));
     }
-    script.push_str(&format!("export MYSQL_HOST=127.0.0.1\nexport MYSQL_TCP_PORT={}\n", p.db_port));
+    if project::is_postgres(p) {
+        script.push_str(&format!(
+            "export PGHOST=127.0.0.1\nexport PGPORT={}\nexport PGUSER={}\nexport PGPASSWORD={}\nexport PGDATABASE={}\n",
+            p.db_port,
+            sh_quote(DB_USER),
+            sh_quote(DB_PASSWORD),
+            sh_quote(&p.db_name)
+        ));
+    } else {
+        script.push_str(&format!("export MYSQL_HOST=127.0.0.1\nexport MYSQL_TCP_PORT={}\n", p.db_port));
+    }
     script.push_str(&format!("cd {}\n", sh_quote(&runtime::docroot_dir(base, p).display().to_string())));
     script.push_str(&format!(
         "clear\nprintf '\\033[1m🐘 LocalTusk — %s\\033[0m\\n' {}\n\
-         echo 'php, wp (WP-CLI) e mysql usam o PHP e o banco deste projeto.'\necho\n",
-        sh_quote(&p.name)
+         echo {}\necho\n",
+        sh_quote(&p.name),
+        sh_quote(&terminal_banner(p))
     ));
     script.push_str(&format!(
         "case \"$(basename \"$SHELL\")\" in\n\
@@ -534,6 +588,16 @@ pub(crate) fn prepare_terminal(base: &Path, p: &Project) -> Result<PathBuf, Stri
     Ok(script_path)
 }
 
+/// Linha de boas-vindas do terminal: quais comandos já apontam para os serviços do projeto.
+fn terminal_banner(p: &Project) -> String {
+    let mut cmds = if project::is_postgres(p) { "php, psql e pg_dump" } else { "php, wp (WP-CLI) e mysql" }.to_string();
+    if project::redis_on(p) {
+        cmds.push_str(" e redis-cli");
+    }
+    let what = if project::is_postgres(p) { "o PHP e o PostgreSQL deste projeto" } else { "o PHP e o banco deste projeto" };
+    format!("{cmds} usam {what}.")
+}
+
 fn write_exec(path: &Path, content: &str) -> Result<(), String> {
     fs::write(path, content).map_err(|e| format!("{}: {e}", path.display()))?;
     #[cfg(unix)]
@@ -547,6 +611,22 @@ fn write_exec(path: &Path, content: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn wordpress_recusa_projeto_postgres() {
+        let mut p = project("pg-wp");
+        p.db_engine = "postgres".into();
+        let o = WpOptions {
+            title: "Site".into(),
+            admin_user: "admin".into(),
+            admin_password: "senha-forte-123".into(),
+            admin_email: "a@b.co".into(),
+            locale: "en_US".into(),
+            replace_existing: false,
+        };
+        let err = install_wordpress(Path::new("/nao/existe"), &p, &o, &|_| {}).unwrap_err();
+        assert!(err.contains("MySQL"), "{err}");
+    }
 
     fn project(id: &str) -> Project {
         Project {

@@ -12,6 +12,10 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const BASE_URL: &str = "https://dl.static-php.dev/static-php-cli/bulk";
+/// Pacote "common" do static-php-cli: traz `pdo_pgsql` e `pgsql` (o "bulk" só tem `pgsql`),
+/// mas não tem `mysqli`, `intl` nem `opcache`. Por isso projetos com PostgreSQL usam este PHP
+/// (guardado ao lado do outro, como `php-fpm-pg` e `php-pg`) e os de MySQL continuam no "bulk".
+const COMMON_URL: &str = "https://dl.static-php.dev/static-php-cli/common";
 
 /// Sufixo de plataforma usado nos nomes dos arquivos do static-php-cli.
 fn platform() -> Option<&'static str> {
@@ -112,7 +116,7 @@ pub fn cli_bin(base: &Path, version: &str) -> Option<PathBuf> {
 
 /// Extrai um pacote do static-php-cli em `dest`, deixa o binário executável e confere
 /// que ele roda e reporta a versão pedida.
-fn unpack_binary(archive: &Path, dest: &Path, bin_name: &str, version: &str) -> Result<(), String> {
+fn unpack_binary(archive: &Path, dest: &Path, bin_name: &str, expect: &str) -> Result<(), String> {
     fs::create_dir_all(dest).map_err(|e| e.to_string())?;
     let file = File::open(archive).map_err(|e| e.to_string())?;
     tar::Archive::new(flate2::read::GzDecoder::new(file))
@@ -132,7 +136,7 @@ fn unpack_binary(archive: &Path, dest: &Path, bin_name: &str, version: &str) -> 
         .output()
         .map_err(|e| format!("o binário baixado não executa: {e}"))?;
     let text = String::from_utf8_lossy(&out.stdout);
-    if !text.contains(&format!("PHP {version}")) {
+    if !text.contains(expect) {
         return Err(format!("verificação falhou: {}", text.lines().next().unwrap_or("sem saída")));
     }
     Ok(())
@@ -188,11 +192,11 @@ pub fn install(
 
         // 2) Extração e verificação: os binários precisam rodar e reportar a versão pedida.
         emit("extract", 0, 0);
-        unpack_binary(&fpm_archive, &tmp_dir, "php-fpm", version)?;
+        unpack_binary(&fpm_archive, &tmp_dir, "php-fpm", &format!("PHP {version}"))?;
         emit("verify", 0, 0);
         if cli_ok {
             // Sem o CLI o PHP-FPM continua válido; `ensure_cli` tenta de novo quando precisar.
-            if unpack_binary(&cli_archive, &tmp_dir, "php", version).is_err() {
+            if unpack_binary(&cli_archive, &tmp_dir, "php", &format!("PHP {version}")).is_err() {
                 let _ = fs::remove_file(tmp_dir.join("php"));
             }
         }
@@ -243,7 +247,7 @@ pub fn ensure_cli(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)
         download::download_to(&url, &archive, &mut |d, t| emit("download", d, t))
             .map_err(|e| format!("PHP CLI {version}: {e}"))?;
         emit("extract", 0, 0);
-        unpack_binary(&archive, &tmp, "php", version)?;
+        unpack_binary(&archive, &tmp, "php", &format!("PHP {version}"))?;
         fs::rename(tmp.join("php"), dir.join("php")).map_err(|e| e.to_string())
     })();
     let _ = fs::remove_file(&archive);
@@ -270,4 +274,161 @@ pub fn managed_versions(base: &Path) -> Vec<String> {
         .filter(|i| i.managed)
         .map(|i| i.full_version)
         .collect()
+}
+
+// ------------------------------------------------------------------ PHP com PostgreSQL
+
+/// PHP-FPM do pacote "common" de uma versão gerenciada, se já foi baixado.
+pub fn pg_fpm(base: &Path, version: &str) -> Option<PathBuf> {
+    let p = install_dir(base, version).join("php-fpm-pg");
+    p.is_file().then_some(p)
+}
+
+/// PHP CLI do pacote "common" de uma versão gerenciada, se já foi baixado.
+pub fn pg_cli(base: &Path, version: &str) -> Option<PathBuf> {
+    let p = install_dir(base, version).join("php-pg");
+    p.is_file().then_some(p)
+}
+
+/// Patch do pacote "common" a usar para a série de `full_version` (`8.4.8` -> série `8.4`):
+/// o mesmo patch se existir, senão o mais novo da série.
+fn pick_common_version(listing: &serde_json::Value, full_version: &str, platform: &str) -> Option<String> {
+    let minor = full_version.split('.').take(2).collect::<Vec<_>>().join(".");
+    let suffix = format!("-fpm-{platform}.tar.gz");
+    let mut found: Vec<String> = listing
+        .as_array()?
+        .iter()
+        .filter_map(|item| {
+            let name = item.get("name")?.as_str()?;
+            let v = name.strip_prefix("php-")?.strip_suffix(suffix.as_str())?;
+            (valid_version(v) && v.split('.').take(2).collect::<Vec<_>>().join(".") == minor).then(|| v.to_string())
+        })
+        .collect();
+    if found.iter().any(|v| v == full_version) {
+        return Some(full_version.to_string());
+    }
+    found.sort_by_key(|v| version_key(v));
+    found.pop()
+}
+
+/// Garante o PHP com `pdo_pgsql` para uma versão instalada pelo app. Baixa o PHP-FPM e o CLI
+/// do pacote "common" na primeira vez. Bloqueante.
+pub fn ensure_pg_flavor(base: &Path, full_version: &str, progress: &dyn Fn(InstallProgress)) -> Result<(), String> {
+    if !valid_version(full_version) {
+        return Err("versão inválida".into());
+    }
+    if pg_fpm(base, full_version).is_some() && pg_cli(base, full_version).is_some() {
+        return Ok(());
+    }
+    let dir = install_dir(base, full_version);
+    if !dir.join("php-fpm").is_file() {
+        return Err(format!("o PHP {full_version} não está instalado"));
+    }
+    let platform = platform().ok_or("Plataforma não suportada.")?;
+    let listing: serde_json::Value = serde_json::from_str(
+        &download::get_string(&format!("{COMMON_URL}/?format=json"))
+            .map_err(|e| format!("Não foi possível consultar o PHP com suporte a PostgreSQL (sem internet?): {e}"))?,
+    )
+    .map_err(|e| e.to_string())?;
+    let common = pick_common_version(&listing, full_version, platform)
+        .ok_or_else(|| format!("Não há PHP com suporte a PostgreSQL para a série {full_version}."))?;
+    let minor = common.split('.').take(2).collect::<Vec<_>>().join(".");
+    let expect = format!("PHP {minor}.");
+
+    let root = php_root(base);
+    let tmp = root.join(format!(".tmp-{full_version}-pg"));
+    let _ = fs::remove_dir_all(&tmp);
+    fs::create_dir_all(&tmp).map_err(|e| e.to_string())?;
+
+    let emit = |stage: &str, downloaded: u64, total: u64| {
+        progress(InstallProgress {
+            id: format!("php-pg-{full_version}"),
+            stage: stage.to_string(),
+            downloaded,
+            total,
+            message: Some("Baixando o PHP com suporte a PostgreSQL…".into()),
+        })
+    };
+    let result = (|| -> Result<(), String> {
+        let mut total_fpm = 0u64;
+        for (kind, bin, target) in [("fpm", "php-fpm", "php-fpm-pg"), ("cli", "php", "php-pg")] {
+            let archive = tmp.join(format!("{kind}.tar.gz"));
+            let url = format!("{COMMON_URL}/php-{common}-{kind}-{platform}.tar.gz");
+            let offset = total_fpm;
+            download::download_to(&url, &archive, &mut |d, t| {
+                if kind == "fpm" {
+                    total_fpm = t;
+                }
+                emit("download", offset + d, if kind == "fpm" { t * 2 } else { offset + t })
+            })
+            .map_err(|e| format!("PHP {common} (PostgreSQL): {e}"))?;
+            emit("extract", 0, 0);
+            let out = tmp.join(kind);
+            unpack_binary(&archive, &out, bin, &expect)?;
+            fs::rename(out.join(bin), tmp.join(target)).map_err(|e| e.to_string())?;
+        }
+        for target in ["php-fpm-pg", "php-pg"] {
+            let _ = fs::remove_file(dir.join(target));
+            fs::rename(tmp.join(target), dir.join(target)).map_err(|e| e.to_string())?;
+        }
+        Ok(())
+    })();
+    let _ = fs::remove_dir_all(&tmp);
+    result
+}
+
+/// PHP-FPM a usar num projeto: o do pacote "common" quando o banco é PostgreSQL (baixado
+/// aqui se faltar), senão o normal. PHP do sistema (Homebrew) já vem com `pdo_pgsql`.
+pub fn fpm_for(base: &Path, php: &tools::PhpInstall, postgres: bool) -> Result<PathBuf, String> {
+    if !postgres || !php.managed {
+        return Ok(php.fpm.clone());
+    }
+    ensure_pg_flavor(base, &php.full_version, &|_| {})?;
+    pg_fpm(base, &php.full_version).ok_or_else(|| "o PHP com suporte a PostgreSQL não foi instalado".into())
+}
+
+/// PHP CLI de um projeto, com a mesma regra de `fpm_for`, sem baixar nada: se o pacote
+/// "common" ainda não existe usa o CLI normal.
+pub fn cli_for(base: &Path, php: &tools::PhpInstall, postgres: bool) -> Option<PathBuf> {
+    if postgres && php.managed {
+        if let Some(p) = pg_cli(base, &php.full_version) {
+            return Some(p);
+        }
+    }
+    php.cli()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn escolhe_o_patch_do_pacote_common() {
+        let listing = serde_json::json!([
+            {"name": "php-8.4.8-fpm-macos-aarch64.tar.gz"},
+            {"name": "php-8.4.23-fpm-macos-aarch64.tar.gz"},
+            {"name": "php-8.4.23-cli-macos-aarch64.tar.gz"},
+            {"name": "php-8.3.2-fpm-macos-aarch64.tar.gz"},
+            {"name": "php-8.3.30-fpm-macos-aarch64.tar.gz"},
+            {"name": "php-8.4.99-fpm-linux-x86_64.tar.gz"},
+        ]);
+        let p = "macos-aarch64";
+        assert_eq!(pick_common_version(&listing, "8.4.8", p).as_deref(), Some("8.4.8"), "mesmo patch");
+        assert_eq!(pick_common_version(&listing, "8.4.5", p).as_deref(), Some("8.4.23"), "mais novo da série (23 > 8)");
+        assert_eq!(pick_common_version(&listing, "8.3.32", p).as_deref(), Some("8.3.30"));
+        assert_eq!(pick_common_version(&listing, "8.5.1", p), None);
+    }
+
+    #[test]
+    fn php_do_sistema_nao_baixa_nada() {
+        let base = std::env::temp_dir().join("localtusk-php-nodl");
+        let sys = tools::PhpInstall {
+            full_version: "8.4.1".into(),
+            version: "8.4".into(),
+            fpm: PathBuf::from("/opt/homebrew/sbin/php-fpm"),
+            managed: false,
+        };
+        assert_eq!(fpm_for(&base, &sys, true).unwrap(), sys.fpm);
+        assert_eq!(fpm_for(&base, &sys, false).unwrap(), sys.fpm);
+    }
 }

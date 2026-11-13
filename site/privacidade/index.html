@@ -86,7 +86,7 @@
         <ul class="list">
           <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Não existe conta, login ou cadastro.</b></span></li>
           <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Não há telemetria, análise de uso, relatório de falhas nem rastreadores.</b> O app não envia informações sobre você, o seu computador ou os seus projetos.</span></li>
-          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Os serviços ficam só na sua máquina.</b> Servidor web, PHP, MySQL e Mailpit escutam apenas no endereço local (<code>127.0.0.1</code>), então não ficam expostos à sua rede.</span></li>
+          <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Os serviços ficam só na sua máquina.</b> Servidor web, PHP, MySQL, PostgreSQL, Redis e Mailpit escutam apenas no endereço local (<code>127.0.0.1</code>), então não ficam expostos à sua rede.</span></li>
           <li><svg class="ico yes"><use href="../assets/img/icons.svg#i-check"/></svg><span><b>Os e-mails de teste não saem do computador.</b> O Mailpit só captura as mensagens enviadas pelos seus projetos.</span></li>
         </ul>
         <p>Como o código é aberto, você pode conferir tudo isso no <a href="https://github.com/jhonatanMP/localtusk" rel="noopener">repositório</a>.</p>
@@ -100,6 +100,7 @@
             <tbody>
               <tr><td>PHP</td><td><code>dl.static-php.dev</code></td></tr>
               <tr><td>MySQL</td><td><code>cdn.mysql.com</code></td></tr>
+              <tr><td>PostgreSQL e Valkey (Redis)</td><td><code>github.com</code> (binários do PostgreSQL e código-fonte do Valkey, que o app compila aqui)</td></tr>
               <tr><td>Caddy, Mailpit e WP-CLI</td><td><code>api.github.com</code> e <code>github.com</code></td></tr>
               <tr><td>Adminer Neo</td><td><code>www.adminneo.org</code></td></tr>
               <tr><td>WordPress (quando você cria um site)</td><td><code>wordpress.org</code>, pelo WP-CLI</td></tr>

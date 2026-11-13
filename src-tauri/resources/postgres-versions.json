@@ -1,0 +1,75 @@
+{
+ "generated": "2026-11-12",
+ "versions": [
+  {
+   "version": "18.7.0",
+   "major": "18",
+   "builds": {
+    "arm64": {
+     "bytes": 88965986,
+     "sha256": "86456c0ed99d2466524eaa074db6580cf7d748b91042e252c83eaca9a9d216e7"
+    },
+    "x86_64": {
+     "bytes": 92187545,
+     "sha256": "9cd649259d6bf4af60a235e772c83853df215b63f4c1967c2eed7f9376aefb89"
+    }
+   }
+  },
+  {
+   "version": "17.12.0",
+   "major": "17",
+   "builds": {
+    "arm64": {
+     "bytes": 90196480,
+     "sha256": "2f752033b208f9a6a12ef64a9ee23bf19149cff160841980db1e221bf7d24809"
+    },
+    "x86_64": {
+     "bytes": 93377231,
+     "sha256": "34ba0eca0f15776b4ab9a07b2decc6fb0b1910a57870ad7d7dacb7399b43c9bd"
+    }
+   }
+  },
+  {
+   "version": "16.16.0",
+   "major": "16",
+   "builds": {
+    "arm64": {
+     "bytes": 89018605,
+     "sha256": "b7f002d554cd8a916d189e24b8f885d088b7909bb6d2de092f82c10274cb8251"
+    },
+    "x86_64": {
+     "bytes": 92163354,
+     "sha256": "6bcc3f98c76fdb4b52bf4e59781308ea996058941566579a0961b3a25626b6bb"
+    }
+   }
+  },
+  {
+   "version": "15.20.0",
+   "major": "15",
+   "builds": {
+    "arm64": {
+     "bytes": 36964569,
+     "sha256": "b4f28bbbcb5f195df3f84b5ad9ab8ee60d0fab44e60fdf4b1036f0c7e1451a79"
+    },
+    "x86_64": {
+     "bytes": 37556452,
+     "sha256": "271f3cd94dedd576a6c4a48bb8da02382cffcca3f8112984facf79596aaaf68a"
+    }
+   }
+  },
+  {
+   "version": "14.25.0",
+   "major": "14",
+   "builds": {
+    "arm64": {
+     "bytes": 27517046,
+     "sha256": "35e191e6a20a86f9eb2a1b9d091ba0b6b5cad51fcbf5627080055194b1418871"
+    },
+    "x86_64": {
+     "bytes": 27931984,
+     "sha256": "ddb521888f8a3868d4ec48b23d07f936acec1a7109d891ef10ed9b19a8742116"
+    }
+   }
+  }
+ ]
+}

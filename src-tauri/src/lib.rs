@@ -6,10 +6,12 @@ mod download;
 mod extras;
 mod mysql_manager;
 mod php_manager;
+mod postgres_manager;
 mod project;
 mod runtime;
 mod ssl;
 mod tools;
+mod valkey_manager;
 mod wp;
 
 use commands::AppState;
@@ -92,7 +94,16 @@ pub fn run() {
             commands::mysql_catalog,
             commands::install_mysql,
             commands::uninstall_mysql,
-            commands::set_db_version,
+            commands::set_database,
+            commands::set_redis,
+            commands::list_postgres_versions,
+            commands::postgres_catalog,
+            commands::install_postgres,
+            commands::uninstall_postgres,
+            commands::list_valkey_versions,
+            commands::valkey_catalog,
+            commands::install_valkey,
+            commands::uninstall_valkey,
         ])
         .build(tauri::generate_context!())
         .expect("erro ao iniciar o LocalTusk");

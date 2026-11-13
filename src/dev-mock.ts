@@ -3,18 +3,21 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 
 const projects = [
-  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", httpUrl: "http://loja-virtual.localhost:8000", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true },
-  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", httpUrl: "http://blog-wp.localhost:8001", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true },
-  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", httpUrl: "http://api-legada.localhost:8002", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false },
+  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", httpUrl: "http://loja-virtual.localhost:8000", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true, dbEngine: "mysql", redis: false, redisPort: 0 },
+  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", httpUrl: "http://blog-wp.localhost:8001", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true, dbEngine: "mysql", redis: false, redisPort: 0 },
+  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", httpUrl: "http://api-legada.localhost:8002", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false, dbEngine: "mysql", redis: false, redisPort: 0 },
+  { id: "api-pg", name: "API PostgreSQL", docroot: "public", phpVersion: "8.3.32", dbEngine: "postgres", dbVersion: "17.12.0", dbInitialized: true, httpPort: 8003, dbPort: 5433, dbName: "api_pg", dbUser: "root", dbPassword: "root", url: "http://api-pg.localhost:8003", httpUrl: "http://api-pg.localhost:8003", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-pg", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true, redis: true, redisPort: 6380 },
 ];
 
 let sslTrusted = false;
 
 const phps = ["8.4.9", "8.3.32", "8.1.33"].map((v) => ({ fullVersion: v, version: v.split(".").slice(0, 2).join("."), fpm: `/x/${v}/php-fpm`, managed: true }));
 const mysqls = [{ fullVersion: "8.4.13", series: "8.4", mysqld: "/x/mysqld", managed: true }];
+const postgreses = [{ fullVersion: "17.12.0", major: "17", postgres: "/x/pg/17/bin/postgres" }];
+const valkeys = [{ fullVersion: "9.0.7", server: "/x/valkey/bin/valkey-server" }];
 const extras = [
   { id: "caddy", label: "Caddy", description: "Servidor web de cada projeto. Obrigatório.", essential: true, installed: true, version: "2.11.9" },
-  { id: "adminneo", label: "Adminer Neo", description: "Administração do MySQL pelo navegador, leve e moderna, com login automático.", essential: false, installed: true, version: "5.2.0" },
+  { id: "adminneo", label: "Adminer Neo", description: "Administração do MySQL e do PostgreSQL pelo navegador, leve e moderna, com login automático.", essential: false, installed: true, version: "5.2.0" },
   { id: "mailpit", label: "Mailpit", description: "Caixa de e-mails de teste: tudo que o PHP enviar com mail() ou SMTP cai aqui.", essential: false, installed: true, version: "1.27.1" },
   { id: "wpcli", label: "WP-CLI", description: "A linha de comando do WordPress (comando wp). Necessária para o botão \"Instalar WordPress\".", essential: false, installed: false, version: null },
 ];
@@ -22,6 +25,9 @@ const phpCatalog = [["8.5", "8.5.1", "8.5.0"], ["8.4", "8.4.9", "8.4.8", "8.4.7"
   vs.map((version, i) => ({ version, minor, size: "33.9M", installed: phps.some((p) => p.fullVersion === version), latest: i === 0 })));
 const mysqlCatalog = [["9.7", "9.7.4"], ["8.4", "8.4.13", "8.4.12"], ["8.0", "8.0.46", "8.0.45"]].flatMap(([series, ...vs]) =>
   vs.map((version, i) => ({ version, series, size: "165.4M", installed: version === "8.4.13", latest: i === 0 })));
+
+const postgresCatalog = [["18", "18.7.0"], ["17", "17.12.0"], ["16", "16.16.0"], ["15", "15.20.0"], ["14", "14.25.0"]].map(([major, version], i) => ({ version, major, size: "84 MB", installed: version === "17.12.0", latest: true && i >= 0 }));
+const valkeyCatalog = [{ version: "9.0.7", size: "4 MB", installed: true }];
 
 const backups = [
   { fileName: "loja-virtual-20261111-103000.tar.gz", path: "/Users/dev/LocalTusk/backups/loja-virtual-20261111-103000.tar.gz", size: 48_300_000, createdAt: 1794486600, projectId: "loja-virtual", projectName: "Loja Virtual", hasWordpress: false },
@@ -68,6 +74,21 @@ export function installDevMock() {
         case "check_tools": return [];
         case "list_php_versions": return phps;
         case "list_mysql_versions": return mysqls;
+        case "list_postgres_versions": return postgreses;
+        case "list_valkey_versions": return valkeys;
+        case "postgres_catalog": return postgresCatalog;
+        case "valkey_catalog": return valkeyCatalog;
+        case "set_database": {
+          const p = projects.find((x) => x.id === a.id)!;
+          Object.assign(p, { dbEngine: a.dbEngine, dbVersion: a.dbVersion, dbPort: a.dbEngine === "postgres" ? 5434 : 3309 });
+          return later(p);
+        }
+        case "set_redis": {
+          const p = projects.find((x) => x.id === a.id)!;
+          p.redis = a.enabled as boolean;
+          if (p.redis && !p.redisPort) p.redisPort = 6381;
+          return later(p);
+        }
         case "extras_status": return extras;
         case "app_info": return { dataDir: "/Users/dev/LocalTusk", phpDir: "/Users/dev/LocalTusk/bin/php", backupsDir: "/Users/dev/LocalTusk/backups", blueprintsDir: "/Users/dev/LocalTusk/blueprints", installing: [] };
         case "read_requests": {

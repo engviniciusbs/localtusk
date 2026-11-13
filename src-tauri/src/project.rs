@@ -19,7 +19,11 @@ pub struct Project {
     pub docroot: String,
     /// Versão major.minor do PHP (ex.: `8.3`). Vazio = a mais nova instalada.
     pub php_version: String,
-    /// Versão do MySQL (completa `8.4.9` ou série `8.4`). Vazio = a mais nova instalada.
+    /// Banco do projeto: `mysql` (padrão, também quando vazio) ou `postgres`.
+    #[serde(default)]
+    pub db_engine: String,
+    /// Versão do banco: MySQL (completa `8.4.9` ou série `8.4`) ou PostgreSQL (completa
+    /// `16.16.0` ou major `16`). Vazio = a mais nova instalada.
     #[serde(default)]
     pub db_version: String,
     pub http_port: u16,
@@ -35,6 +39,43 @@ pub struct Project {
     /// Aceita conexões de outros aparelhos da mesma rede (por padrão, só deste computador).
     #[serde(default)]
     pub lan: bool,
+    /// Servidor Redis (Valkey) próprio do projeto.
+    #[serde(default)]
+    pub redis: bool,
+    /// Porta do Redis. 0 = ainda não reservada.
+    #[serde(default)]
+    pub redis_port: u16,
+}
+
+pub const ENGINE_MYSQL: &str = "mysql";
+pub const ENGINE_POSTGRES: &str = "postgres";
+
+/// O projeto usa PostgreSQL (qualquer outro valor, inclusive vazio, é MySQL).
+pub fn is_postgres(p: &Project) -> bool {
+    p.db_engine == ENGINE_POSTGRES
+}
+
+/// Nome normalizado do banco do projeto: `mysql` ou `postgres`.
+pub fn engine_of(p: &Project) -> &'static str {
+    if is_postgres(p) { ENGINE_POSTGRES } else { ENGINE_MYSQL }
+}
+
+/// Aceita só os bancos que o app sabe gerenciar.
+pub fn valid_engine(e: &str) -> bool {
+    e == ENGINE_MYSQL || e == ENGINE_POSTGRES
+}
+
+/// Primeira porta a tentar para o banco de cada tipo (MySQL 3307, PostgreSQL 5433).
+pub fn db_port_start(engine: &str) -> u16 {
+    if engine == ENGINE_POSTGRES { 5433 } else { 3307 }
+}
+
+/// Primeira porta a tentar para o Redis.
+pub const REDIS_PORT_START: u16 = 6380;
+
+/// O projeto sobe o Redis de fato (ligado e com porta reservada).
+pub fn redis_on(p: &Project) -> bool {
+    p.redis && p.redis_port != 0
 }
 
 pub fn project_dir(base: &Path, id: &str) -> PathBuf {
@@ -200,7 +241,7 @@ pub fn now() -> u64 {
 pub fn reserved_ports(projects: &[Project]) -> HashSet<u16> {
     projects
         .iter()
-        .flat_map(|p| [p.http_port, p.db_port, p.https_port])
+        .flat_map(|p| [p.http_port, p.db_port, p.https_port, p.redis_port])
         .filter(|port| *port != 0)
         .collect()
 }
@@ -296,6 +337,30 @@ mod tests {
         let r = reserved_ports(&[a, b]);
         assert!(r.contains(&8443) && r.contains(&8000) && r.contains(&3308));
         assert!(!r.contains(&0));
+    }
+
+    #[test]
+    fn projetos_antigos_sem_banco_nem_redis_sao_mysql_sem_redis() {
+        let old = r#"[{"id":"loja","name":"Loja","docroot":"","phpVersion":"","httpPort":8000,"dbPort":3307,"dbName":"loja","createdAt":1}]"#;
+        let list: Vec<Project> = serde_json::from_str(old).unwrap();
+        assert_eq!(engine_of(&list[0]), "mysql");
+        assert!(!is_postgres(&list[0]) && !redis_on(&list[0]));
+    }
+
+    #[test]
+    fn banco_e_redis_so_valem_com_valores_conhecidos() {
+        assert!(valid_engine("mysql") && valid_engine("postgres"));
+        assert!(!valid_engine("") && !valid_engine("mariadb") && !valid_engine("../x"));
+        let mut p = sample();
+        p.db_engine = "postgres".into();
+        assert_eq!(engine_of(&p), "postgres");
+        assert_eq!(db_port_start(engine_of(&p)), 5433);
+        assert_eq!(db_port_start("mysql"), 3307);
+        p.redis = true;
+        assert!(!redis_on(&p), "sem porta reservada o Redis não sobe");
+        p.redis_port = 6380;
+        assert!(redis_on(&p));
+        assert!(reserved_ports(&[p]).contains(&6380));
     }
 
     #[test]

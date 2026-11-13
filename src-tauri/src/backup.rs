@@ -2,12 +2,12 @@
 //!
 //! Um backup é um `.tar.gz` em `~/LocalTusk/backups/` com:
 //! - `manifest.json`: nome e configurações do projeto;
-//! - `database.sql`: dump do banco (`mysqldump`);
+//! - `database.sql`: dump do banco (`mysqldump` ou `pg_dump`, conforme o banco do projeto);
 //! - `app/`: os arquivos do site.
 
 use crate::download::InstallProgress;
 use crate::project::{self, DB_PASSWORD, DB_USER, Project};
-use crate::{mysql_manager, runtime, wp};
+use crate::{mysql_manager, postgres_manager, runtime, wp};
 use flate2::{Compression, read::GzDecoder, write::GzEncoder};
 use serde::{Deserialize, Serialize};
 use std::fs::{self, File};
@@ -29,6 +29,9 @@ pub struct Manifest {
     pub docroot: String,
     #[serde(default)]
     pub php_version: String,
+    /// `mysql` ou `postgres`. Backups antigos não têm o campo e são de MySQL.
+    #[serde(default)]
+    pub db_engine: String,
     #[serde(default)]
     pub db_version: String,
     pub db_name: String,
@@ -123,7 +126,78 @@ fn tail(bytes: &[u8]) -> String {
     lines[lines.len().saturating_sub(6)..].join("\n")
 }
 
+/// Cliente do PostgreSQL (`psql`, `pg_dump`) da mesma instalação do servidor do projeto.
+fn pg_tool(base: &Path, p: &Project, name: &str) -> Result<PathBuf, String> {
+    postgres_manager::pick(base, &p.db_version)
+        .and_then(|i| i.tool(name))
+        .ok_or_else(|| format!("O PostgreSQL instalado não inclui o `{name}`. Instale um PostgreSQL em \"PHP e ferramentas\"."))
+}
+
+/// Comando de um cliente do PostgreSQL já ligado ao banco do projeto (TCP, senha padrão).
+fn pg_command(bin: &Path, p: &Project) -> Command {
+    let mut c = Command::new(bin);
+    c.env("PGPASSWORD", DB_PASSWORD)
+        .args(["-h", "127.0.0.1", "-p", &p.db_port.to_string(), "-U", DB_USER]);
+    c
+}
+
+fn dump_postgres(base: &Path, p: &Project, out: &Path) -> Result<(), String> {
+    let bin = pg_tool(base, p, "pg_dump")?;
+    // `--clean --if-exists`: o dump limpa os objetos antes de recriá-los; sem dono nem
+    // permissões, para restaurar em qualquer máquina.
+    let output = pg_command(&bin, p)
+        .args(["--no-owner", "--no-privileges", "--clean", "--if-exists", "--encoding=UTF8"])
+        .arg(format!("--file={}", out.display()))
+        .arg(&p.db_name)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("pg_dump: {e}"))?;
+    if output.status.success() {
+        Ok(())
+    } else {
+        Err(format!("Falha ao exportar o banco ({})\n\n{}", output.status, tail(&output.stderr)))
+    }
+}
+
+fn import_postgres(base: &Path, p: &Project, dump: &Path) -> Result<(), String> {
+    let bin = pg_tool(base, p, "psql")?;
+    let psql = |db: &str| {
+        let mut c = pg_command(&bin, p);
+        c.args(["-X", "-q", "-v", "ON_ERROR_STOP=1", "-d", db]);
+        c
+    };
+
+    // Banco limpo: o conteúdo atual é substituído pelo do backup. `FORCE` derruba conexões
+    // abertas (por exemplo, do PHP-FPM).
+    let out = psql("postgres")
+        .arg("-c")
+        .arg(format!("DROP DATABASE IF EXISTS \"{db}\" WITH (FORCE)", db = p.db_name))
+        .arg("-c")
+        .arg(format!("CREATE DATABASE \"{db}\"", db = p.db_name))
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("psql: {e}"))?;
+    if !out.status.success() {
+        return Err(format!("Falha ao preparar o banco ({})\n\n{}", out.status, tail(&out.stderr)));
+    }
+
+    let out = psql(&p.db_name)
+        .arg("-f")
+        .arg(dump)
+        .stdin(Stdio::null())
+        .output()
+        .map_err(|e| format!("psql: {e}"))?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(format!("Falha ao importar o banco ({})\n\n{}", out.status, tail(&out.stderr)))
+    }
+}
+
 fn dump_database(base: &Path, p: &Project, out: &Path) -> Result<(), String> {
+    if project::is_postgres(p) {
+        return dump_postgres(base, p, out);
+    }
     let bin = mysql_tool(base, p, "mysqldump")?;
     let output = Command::new(bin)
         .env("MYSQL_PWD", DB_PASSWORD)
@@ -144,6 +218,9 @@ fn dump_database(base: &Path, p: &Project, out: &Path) -> Result<(), String> {
 }
 
 fn import_database(base: &Path, p: &Project, dump: &Path) -> Result<(), String> {
+    if project::is_postgres(p) {
+        return import_postgres(base, p, dump);
+    }
     let bin = mysql_tool(base, p, "mysql")?;
     let client = || {
         let mut c = Command::new(&bin);
@@ -229,6 +306,7 @@ pub fn write_archive(
             name: p.name.clone(),
             docroot: p.docroot.clone(),
             php_version: p.php_version.clone(),
+            db_engine: project::engine_of(p).into(),
             db_version: p.db_version.clone(),
             db_name: p.db_name.clone(),
             http_port: p.http_port,
@@ -353,6 +431,18 @@ pub fn restore_into(
     key: &str,
     progress: &dyn Fn(InstallProgress),
 ) -> Result<Option<String>, String> {
+    // O dump de um tipo de banco não entra em outro (SQL do MySQL não roda no PostgreSQL).
+    let from = read_manifest(archive)?;
+    let from_engine = if project::valid_engine(&from.db_engine) { from.db_engine.as_str() } else { project::ENGINE_MYSQL };
+    if from_engine != project::engine_of(p) {
+        let label = |e: &str| if e == project::ENGINE_POSTGRES { "PostgreSQL" } else { "MySQL" };
+        return Err(format!(
+            "Este backup é de um projeto com {} e o projeto de destino usa {}. Restaure como um projeto novo.",
+            label(from_engine),
+            label(project::engine_of(p))
+        ));
+    }
+
     let pdir = project::project_dir(base, &p.id);
     let app = runtime::app_dir(base, &p.id);
     let work = pdir.join("run").join("restore-tmp");

@@ -81,7 +81,7 @@ pub fn status(base: &Path) -> Vec<ExtraStatus> {
                 ),
                 "adminneo" => (
                     "Adminer Neo",
-                    "Administração do MySQL pelo navegador, leve e moderna, com login automático.",
+                    "Administração do MySQL e do PostgreSQL pelo navegador, leve e moderna, com login automático.",
                 ),
                 "wpcli" => (
                     "WP-CLI",
@@ -170,8 +170,8 @@ return [
     "navigationMode" => "dual",
     "preferSelection" => true,
     "versionVerification" => false,
-    "defaultDriver" => "mysql",
-    "defaultServer" => (getenv('DB_HOST') ?: '127.0.0.1') . ':' . (getenv('DB_PORT') ?: '3306'),
+    "defaultDriver" => getenv('DB_ENGINE') === 'postgres' ? "pgsql" : "mysql",
+    "defaultServer" => (getenv('DB_HOST') ?: '127.0.0.1') . ':' . (getenv('DB_PORT') ?: (getenv('DB_ENGINE') === 'postgres' ? '5432' : '3306')),
     "defaultDatabase" => getenv('DB_NAME') ?: null,
 ];
 "#;
@@ -180,13 +180,15 @@ return [
 /// de login do Adminer Neo com as credenciais do projeto.
 const ADMINNEO_LOGIN: &str = r#"<?php
 $h = fn($v) => htmlspecialchars((string) $v, ENT_QUOTES);
-$server = (getenv('DB_HOST') ?: '127.0.0.1') . ':' . (getenv('DB_PORT') ?: '3306');
+$pg = getenv('DB_ENGINE') === 'postgres';
+$entry = $pg ? 'pg.php' : 'index.php';
+$server = (getenv('DB_HOST') ?: '127.0.0.1') . ':' . (getenv('DB_PORT') ?: ($pg ? '5432' : '3306'));
 ?><!doctype html>
 <html lang="pt-br"><head><meta charset="utf-8"><title>Abrindo o Adminer Neo…</title>
 <style>body{font:15px system-ui;background:#232531;color:#eceef7;display:grid;place-items:center;height:100vh;margin:0}</style></head>
 <body>
-<form id="f" method="post" action="index.php">
-  <input type="hidden" name="auth[driver]" value="mysql">
+<form id="f" method="post" action="<?= $entry ?>">
+  <input type="hidden" name="auth[driver]" value="<?= $pg ? 'pgsql' : 'mysql' ?>">
   <input type="hidden" name="auth[server]" value="<?= $h($server) ?>">
   <input type="hidden" name="auth[username]" value="<?= $h(getenv('DB_USER') ?: 'root') ?>">
   <input type="hidden" name="auth[password]" value="<?= $h(getenv('DB_PASSWORD')) ?>">
@@ -196,30 +198,75 @@ $server = (getenv('DB_HOST') ?: '127.0.0.1') . ':' . (getenv('DB_PORT') ?: '3306
 <p>Abrindo o Adminer Neo…</p>
 <script>
   // O primeiro acesso cria o cookie de sessão; depois o login é enviado.
-  fetch('index.php', { credentials: 'same-origin' })
+  fetch(<?= json_encode($entry) ?>, { credentials: 'same-origin' })
     .catch(() => {})
     .then(() => document.getElementById('f').submit());
 </script>
 </body></html>
 "#;
 
-fn install_adminneo(tmp: &Path, archive: &Path, emit: Emit) -> Result<String, String> {
-    // Só o driver MySQL, todos os idiomas, tema padrão com todas as cores.
-    let url = "https://www.adminneo.org/files/latest/mysql__default/adminneo-latest.php";
-    download::download_to(url, archive, &mut |d, t| emit("download", d, t))
-        .map_err(|e| format!("Adminer Neo: {e}"))?;
+/// O Adminer Neo é distribuído em um arquivo por driver (todos os idiomas, tema padrão com todas as
+/// cores): `index.php` é o do MySQL e `pg.php` o do PostgreSQL.
+fn adminneo_url(driver: &str) -> String {
+    format!("https://www.adminneo.org/files/latest/{driver}__default/adminneo-latest.php")
+}
 
-    emit("verify", 0, 0);
+fn check_php_file(path: &Path) -> Result<(), String> {
     let mut head = [0u8; 5];
-    File::open(archive)
+    File::open(path)
         .and_then(|mut f| f.read_exact(&mut head))
         .map_err(|e| e.to_string())?;
     if &head != b"<?php" {
         return Err("o arquivo baixado do Adminer Neo não parece ser PHP".into());
     }
+    Ok(())
+}
+
+/// Reescreve a configuração e a página de login do Adminer Neo já instalado. Chamado a cada
+/// início de projeto, assim instalações antigas passam a entender o PostgreSQL sem reinstalar.
+pub fn refresh_adminneo_files(base: &Path) {
+    let d = dir(base, "adminneo");
+    if d.join("index.php").is_file() {
+        let _ = fs::write(d.join("adminneo-config.php"), ADMINNEO_CONFIG);
+        let _ = fs::write(d.join("login.php"), ADMINNEO_LOGIN);
+    }
+}
+
+/// O Adminer Neo instalado tem o driver do PostgreSQL?
+pub fn adminneo_has_pg(base: &Path) -> bool {
+    dir(base, "adminneo").join("pg.php").is_file()
+}
+
+/// Baixa só o driver do PostgreSQL para um Adminer Neo instalado antes dele existir.
+pub fn add_adminneo_pg(base: &Path) -> Result<(), String> {
+    let d = dir(base, "adminneo");
+    if !d.join("index.php").is_file() {
+        return Err("o Adminer Neo não está instalado".into());
+    }
+    let tmp = d.join(".pg.php.download");
+    let result = (|| -> Result<(), String> {
+        download::download_to(&adminneo_url("pgsql"), &tmp, &mut |_, _| {}).map_err(|e| format!("Adminer Neo (PostgreSQL): {e}"))?;
+        check_php_file(&tmp)?;
+        fs::rename(&tmp, d.join("pg.php")).map_err(|e| e.to_string())
+    })();
+    let _ = fs::remove_file(&tmp);
+    result
+}
+
+fn install_adminneo(tmp: &Path, archive: &Path, emit: Emit) -> Result<String, String> {
+    download::download_to(&adminneo_url("mysql"), archive, &mut |d, t| emit("download", d, t))
+        .map_err(|e| format!("Adminer Neo: {e}"))?;
+
+    emit("verify", 0, 0);
+    check_php_file(archive)?;
 
     emit("extract", 0, 0);
     fs::copy(archive, tmp.join("index.php")).map_err(|e| e.to_string())?;
+    // Driver do PostgreSQL: se falhar, o do MySQL continua valendo (`add_adminneo_pg` tenta depois).
+    let pg = tmp.join("pg.php");
+    if download::download_to(&adminneo_url("pgsql"), &pg, &mut |_, _| {}).is_err() || check_php_file(&pg).is_err() {
+        let _ = fs::remove_file(&pg);
+    }
     fs::write(tmp.join("adminneo-config.php"), ADMINNEO_CONFIG).map_err(|e| e.to_string())?;
     fs::write(tmp.join("login.php"), ADMINNEO_LOGIN).map_err(|e| e.to_string())?;
 

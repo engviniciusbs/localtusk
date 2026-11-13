@@ -1,7 +1,7 @@
 //! Utilitários de download compartilhados (PHP, MySQL, Caddy, Adminer Neo, Mailpit).
 
 use serde::Serialize;
-use sha2::{Digest, Sha512};
+use sha2::{Digest, Sha256, Sha512};
 use std::fs::File;
 use std::io::{Read, Write};
 use std::path::Path;
@@ -84,6 +84,21 @@ pub fn download_to(
 pub fn sha512_hex(path: &Path) -> Result<String, String> {
     let mut f = File::open(path).map_err(|e| e.to_string())?;
     let mut hasher = Sha512::new();
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = f.read(&mut buf).map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(hasher.finalize().iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// SHA-256 do arquivo, em hexadecimal minúsculo.
+pub fn sha256_hex(path: &Path) -> Result<String, String> {
+    let mut f = File::open(path).map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
     let mut buf = vec![0u8; 64 * 1024];
     loop {
         let n = f.read(&mut buf).map_err(|e| e.to_string())?;

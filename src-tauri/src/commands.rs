@@ -5,6 +5,8 @@ use crate::download::InstallProgress;
 use crate::extras::{self, ExtraStatus};
 use crate::mysql_manager::{self, MysqlInstall, MysqlRelease};
 use crate::php_manager::{self, PhpRelease};
+use crate::postgres_manager::{self, PostgresInstall, PostgresRelease};
+use crate::valkey_manager::{self, ValkeyInstall, ValkeyRelease};
 use crate::project::{self, DB_PASSWORD, DB_USER, Project, resolve_base};
 use crate::runtime::{self, Running};
 use crate::ssl;
@@ -69,7 +71,10 @@ impl AppState {
             name: p.name.clone(),
             docroot: p.docroot.clone(),
             php_version: p.php_version.clone(),
+            db_engine: project::engine_of(p).into(),
             db_version: p.db_version.clone(),
+            redis: project::redis_on(p),
+            redis_port: p.redis_port,
             db_initialized: runtime::db_initialized(&self.base, &p.id),
             http_port: p.http_port,
             db_port: p.db_port,
@@ -132,8 +137,13 @@ pub struct ProjectView {
     name: String,
     docroot: String,
     php_version: String,
+    /// `mysql` ou `postgres`.
+    db_engine: String,
     db_version: String,
-    /// O banco já foi criado: a versão do MySQL não pode mais ser trocada.
+    /// O Redis (Valkey) do projeto está ligado.
+    redis: bool,
+    redis_port: u16,
+    /// O banco já foi criado: o tipo e a versão do banco não podem mais ser trocados.
     db_initialized: bool,
     http_port: u16,
     db_port: u16,
@@ -192,7 +202,17 @@ pub fn create_project(
     php_version: String,
     db_version: String,
     docroot: String,
+    db_engine: Option<String>,
+    redis: Option<bool>,
 ) -> Result<ProjectView, String> {
+    let db_engine = db_engine.unwrap_or_else(|| project::ENGINE_MYSQL.into());
+    if !project::valid_engine(&db_engine) {
+        return Err("tipo de banco inválido".into());
+    }
+    let redis = redis.unwrap_or(false);
+    if redis && valkey_manager::pick(&state.base).is_none() {
+        return Err("Instale o Redis (Valkey) em \"PHP e ferramentas\" antes de ligá-lo em um projeto.".into());
+    }
     let name = name.trim().to_string();
     if name.is_empty() {
         return Err("informe um nome para o projeto".into());
@@ -208,7 +228,13 @@ pub fn create_project(
     let http_port = project::free_port(8000, &reserved).ok_or("sem portas HTTP livres")?;
     let mut reserved = reserved;
     reserved.insert(http_port);
-    let db_port = project::free_port(3307, &reserved).ok_or("sem portas de banco livres")?;
+    let db_port = project::free_port(project::db_port_start(&db_engine), &reserved).ok_or("sem portas de banco livres")?;
+    reserved.insert(db_port);
+    let redis_port = if redis {
+        project::free_port(project::REDIS_PORT_START, &reserved).ok_or("sem portas de Redis livres")?
+    } else {
+        0
+    };
 
     let p = Project {
         db_name: project::db_name_for(&id),
@@ -216,9 +242,12 @@ pub fn create_project(
         name,
         docroot,
         php_version,
+        db_engine,
         db_version,
         http_port,
         db_port,
+        redis,
+        redis_port,
         created_at: project::now(),
         ..Default::default()
     };
@@ -245,24 +274,30 @@ fn start_blocking(state: &AppState, id: &str) -> Result<ProjectView, String> {
         .unwrap()
         .iter()
         .filter(|o| o.id != p.id)
-        .flat_map(|o| [o.http_port, o.db_port, o.https_port])
+        .flat_map(|o| [o.http_port, o.db_port, o.https_port, o.redis_port])
         .collect();
     if !project::port_is_free(p.http_port) {
         let mut r = others.clone();
-        r.extend([p.db_port, p.https_port]);
+        r.extend([p.db_port, p.https_port, p.redis_port]);
         p.http_port = project::free_port(8000, &r).ok_or("sem portas HTTP livres")?;
         changed = true;
     }
     if !project::port_is_free(p.db_port) {
         let mut r = others.clone();
-        r.extend([p.http_port, p.https_port]);
-        p.db_port = project::free_port(3307, &r).ok_or("sem portas de banco livres")?;
+        r.extend([p.http_port, p.https_port, p.redis_port]);
+        p.db_port = project::free_port(project::db_port_start(project::engine_of(&p)), &r).ok_or("sem portas de banco livres")?;
         changed = true;
     }
     if project::https_on(&p) && !project::port_is_free(p.https_port) {
-        let mut r = others;
-        r.extend([p.http_port, p.db_port]);
+        let mut r = others.clone();
+        r.extend([p.http_port, p.db_port, p.redis_port]);
         p.https_port = project::free_port(8443, &r).ok_or("sem portas HTTPS livres")?;
+        changed = true;
+    }
+    if project::redis_on(&p) && !project::port_is_free(p.redis_port) {
+        let mut r = others;
+        r.extend([p.http_port, p.db_port, p.https_port]);
+        p.redis_port = project::free_port(project::REDIS_PORT_START, &r).ok_or("sem portas de Redis livres")?;
         changed = true;
     }
     if changed {
@@ -685,7 +720,7 @@ pub async fn uninstall_mysql(state: State<'_, AppState>, version: String) -> Res
         }
         let projects = state.projects.lock().unwrap().clone();
         let running = state.running.lock().unwrap();
-        for p in projects.iter().filter(|p| running.contains_key(&p.id)) {
+        for p in projects.iter().filter(|p| running.contains_key(&p.id) && !project::is_postgres(p)) {
             let in_use = mysql_manager::pick(&state.base, &p.db_version)
                 .map(|i| i.full_version == version)
                 .unwrap_or(false);
@@ -702,33 +737,157 @@ pub async fn uninstall_mysql(state: State<'_, AppState>, version: String) -> Res
     .await
 }
 
-/// Troca a versão do MySQL de um projeto. Só é possível antes de o banco ser criado:
-/// um diretório de dados do MySQL não pode voltar para uma versão anterior.
+/// Troca o banco de um projeto (tipo e versão). Só é possível antes de o banco ser criado:
+/// um diretório de dados não pode mudar de tipo nem voltar para uma versão anterior.
+/// Ao trocar o tipo, o projeto ganha uma porta de banco própria do novo tipo.
 #[tauri::command]
-pub fn set_db_version(
+pub fn set_database(
     state: State<'_, AppState>,
     id: String,
+    db_engine: String,
     db_version: String,
 ) -> Result<ProjectView, String> {
+    if !project::valid_engine(&db_engine) {
+        return Err("tipo de banco inválido".into());
+    }
     if state.running.lock().unwrap().contains_key(&id) {
-        return Err("pare o projeto antes de trocar a versão do MySQL".into());
+        return Err("pare o projeto antes de trocar o banco".into());
     }
     if runtime::db_initialized(&state.base, &id) {
         return Err(
-            "o banco deste projeto já foi criado e não pode trocar de versão. Crie um novo projeto para usar outra versão."
+            "o banco deste projeto já foi criado e não pode trocar de tipo nem de versão. Crie um novo projeto para usar outro banco."
                 .into(),
         );
     }
     let mut projects = state.projects.lock().unwrap();
+    let reserved = project::reserved_ports(&projects);
     let p = projects
         .iter_mut()
         .find(|p| p.id == id)
         .ok_or("projeto não encontrado")?;
+    if project::engine_of(p) != db_engine {
+        let mut taken = reserved;
+        taken.remove(&p.db_port);
+        p.db_port = project::free_port(project::db_port_start(&db_engine), &taken).ok_or("sem portas de banco livres")?;
+    }
+    p.db_engine = db_engine;
     p.db_version = db_version;
     let p = p.clone();
     project::save(&state.base, &projects)?;
     drop(projects);
     Ok(state.view(&p))
+}
+
+/// Liga ou desliga o Redis (Valkey) do projeto. Ao ligar, reserva uma porta.
+#[tauri::command]
+pub async fn set_redis(state: State<'_, AppState>, id: String, enabled: bool) -> Result<ProjectView, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        if enabled && valkey_manager::pick(&state.base).is_none() {
+            return Err("Instale o Redis (Valkey) em \"PHP e ferramentas\" antes de ligá-lo.".into());
+        }
+        change_access(&state, &id, |p, reserved| {
+            if enabled && p.redis_port == 0 {
+                p.redis_port = project::free_port(project::REDIS_PORT_START, reserved).ok_or("sem portas de Redis livres")?;
+            }
+            p.redis = enabled;
+            Ok(())
+        })
+    })
+    .await
+}
+
+// ------------------------------------------------------------------ PostgreSQL
+
+#[tauri::command]
+pub fn list_postgres_versions(state: State<'_, AppState>) -> Vec<PostgresInstall> {
+    postgres_manager::installs(&state.base)
+}
+
+/// Catálogo embutido de versões do PostgreSQL (instantâneo, não usa a internet).
+#[tauri::command]
+pub async fn postgres_catalog(state: State<'_, AppState>) -> Result<Vec<PostgresRelease>, String> {
+    let base = state.base.clone();
+    blocking(move || postgres_manager::catalog(&base)).await
+}
+
+#[tauri::command]
+pub async fn install_postgres(app: AppHandle, state: State<'_, AppState>, version: String) -> Result<(), String> {
+    if !postgres_manager::valid_version(&version) {
+        return Err("versão inválida".into());
+    }
+    let v = version.clone();
+    tracked_install(app, state.inner().clone(), format!("postgres-{version}"), move |base, progress| {
+        postgres_manager::install(&base, &v, progress)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn uninstall_postgres(state: State<'_, AppState>, version: String) -> Result<(), String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        if !postgres_manager::managed_versions(&state.base).contains(&version) {
+            return Err("esta versão não foi instalada pelo LocalTusk".into());
+        }
+        let projects = state.projects.lock().unwrap().clone();
+        let running = state.running.lock().unwrap();
+        for p in projects.iter().filter(|p| running.contains_key(&p.id) && project::is_postgres(p)) {
+            let in_use = postgres_manager::pick(&state.base, &p.db_version)
+                .map(|i| i.full_version == version)
+                .unwrap_or(false);
+            if in_use {
+                return Err(format!("PostgreSQL {version} está em uso pelo projeto \"{}\". Pare-o primeiro.", p.name));
+            }
+        }
+        drop(running);
+        postgres_manager::uninstall(&state.base, &version)
+    })
+    .await
+}
+
+// ------------------------------------------------------------------ Redis (Valkey)
+
+#[tauri::command]
+pub fn list_valkey_versions(state: State<'_, AppState>) -> Vec<ValkeyInstall> {
+    valkey_manager::installs(&state.base)
+}
+
+#[tauri::command]
+pub async fn valkey_catalog(state: State<'_, AppState>) -> Result<Vec<ValkeyRelease>, String> {
+    let base = state.base.clone();
+    blocking(move || valkey_manager::catalog(&base)).await
+}
+
+/// Baixa o código-fonte do Valkey e compila (leva cerca de 15 segundos).
+#[tauri::command]
+pub async fn install_valkey(app: AppHandle, state: State<'_, AppState>, version: String) -> Result<(), String> {
+    if !valkey_manager::valid_version(&version) {
+        return Err("versão inválida".into());
+    }
+    let v = version.clone();
+    tracked_install(app, state.inner().clone(), format!("valkey-{version}"), move |base, progress| {
+        valkey_manager::install(&base, &v, progress)
+    })
+    .await
+}
+
+#[tauri::command]
+pub async fn uninstall_valkey(state: State<'_, AppState>, version: String) -> Result<(), String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        if !valkey_manager::managed_versions(&state.base).contains(&version) {
+            return Err("esta versão não foi instalada pelo LocalTusk".into());
+        }
+        let projects = state.projects.lock().unwrap().clone();
+        let running = state.running.lock().unwrap();
+        if let Some(p) = projects.iter().find(|p| running.contains_key(&p.id) && project::redis_on(p)) {
+            return Err(format!("O Redis está em uso pelo projeto \"{}\". Pare-o primeiro.", p.name));
+        }
+        drop(running);
+        valkey_manager::uninstall(&state.base, &version)
+    })
+    .await
 }
 
 // ------------------------------------------------------------------ Terminal e WordPress
@@ -863,6 +1022,15 @@ fn valid_db_name(name: &str) -> bool {
     !name.is_empty() && name.len() <= 64 && name.chars().all(|c| c.is_ascii_alphanumeric() || c == '_')
 }
 
+/// A versão do banco guardada no backup/blueprint está instalada aqui?
+fn db_version_installed(base: &std::path::Path, engine: &str, version: &str) -> bool {
+    if engine == project::ENGINE_POSTGRES {
+        postgres_manager::installs(base).iter().any(|i| i.full_version == version || i.major == version)
+    } else {
+        mysql_manager::installs(base).iter().any(|i| i.full_version == version || i.series == version)
+    }
+}
+
 /// Cria um projeto novo a partir dos dados de um backup ou blueprint (nunca sobrescreve um existente).
 /// Com `new_name` (blueprint), o projeto ganha esse nome e um id derivado dele; o nome do banco
 /// do original é mantido, para que o código do site continue achando o banco.
@@ -890,10 +1058,11 @@ fn project_from_manifest(state: &AppState, m: &backup::Manifest, new_name: Optio
         project::free_port(8000, &reserved).ok_or("sem portas HTTP livres")?
     };
     reserved.insert(http_port);
+    let engine = if project::valid_engine(&m.db_engine) { m.db_engine.clone() } else { project::ENGINE_MYSQL.to_string() };
     let db_port = if !reserved.contains(&m.db_port) && project::port_is_free(m.db_port) {
         m.db_port
     } else {
-        project::free_port(3307, &reserved).ok_or("sem portas de banco livres")?
+        project::free_port(project::db_port_start(&engine), &reserved).ok_or("sem portas de banco livres")?
     };
 
     // Versões que não estão instaladas aqui viram "a mais recente".
@@ -905,14 +1074,7 @@ fn project_from_manifest(state: &AppState, m: &backup::Manifest, new_name: Optio
     } else {
         String::new()
     };
-    let db_version = if mysql_manager::installs(&state.base)
-        .iter()
-        .any(|i| i.full_version == m.db_version || i.series == m.db_version)
-    {
-        m.db_version.clone()
-    } else {
-        String::new()
-    };
+    let db_version = if db_version_installed(&state.base, &engine, &m.db_version) { m.db_version.clone() } else { String::new() };
 
     let db_name = if new_name.is_some() && valid_db_name(&m.db_name) { m.db_name.clone() } else { project::db_name_for(&id) };
     let p = Project {
@@ -921,6 +1083,7 @@ fn project_from_manifest(state: &AppState, m: &backup::Manifest, new_name: Optio
         name,
         docroot,
         php_version,
+        db_engine: engine,
         db_version,
         http_port,
         db_port,
@@ -1121,7 +1284,7 @@ pub async fn create_blueprint(
     blueprint::info(&path)
 }
 
-/// Avisa quando o blueprint foi feito com versões de PHP/MySQL que não estão instaladas aqui.
+/// Avisa quando o blueprint foi feito com versões de PHP/banco que não estão instaladas aqui.
 fn missing_versions_note(state: &AppState, m: &backup::Manifest) -> Option<String> {
     let mut missing = vec![];
     if !m.php_version.is_empty()
@@ -1129,10 +1292,10 @@ fn missing_versions_note(state: &AppState, m: &backup::Manifest) -> Option<Strin
     {
         missing.push(format!("PHP {}", m.php_version));
     }
-    if !m.db_version.is_empty()
-        && !mysql_manager::installs(&state.base).iter().any(|i| i.full_version == m.db_version || i.series == m.db_version)
-    {
-        missing.push(format!("MySQL {}", m.db_version));
+    let engine = if project::valid_engine(&m.db_engine) { m.db_engine.as_str() } else { project::ENGINE_MYSQL };
+    if !m.db_version.is_empty() && !db_version_installed(&state.base, engine, &m.db_version) {
+        let label = if engine == project::ENGINE_POSTGRES { "PostgreSQL" } else { "MySQL" };
+        missing.push(format!("{label} {}", m.db_version));
     }
     if missing.is_empty() {
         return None;

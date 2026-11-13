@@ -80,6 +80,7 @@ export default function WordPressPanel(props: {
 
   return (
     <>
+      {p.dbEngine !== "postgres" && (
       <section className={`panel ${open && !busy && !p.hasWordpress ? "wide" : ""}`}>
         <h3><Icon name="layout" /> WordPress</h3>
         {p.hasWordpress ? (
@@ -203,12 +204,23 @@ export default function WordPressPanel(props: {
         )}
         {progress?.stage === "error" && !busy && <div className="small err-text">{progress.message}</div>}
       </section>
+      )}
 
       <section className="panel">
         <h3><Icon name="terminal" /> Linha de comando</h3>
         <p className="muted small">
-          Abre um terminal na pasta do projeto onde <code>php</code>, <code>wp</code> (WP-CLI) e <code>mysql</code>{" "}
-          já usam o PHP e o banco deste projeto.
+          Abre um terminal na pasta do projeto onde <code>php</code>,{" "}
+          {p.dbEngine === "postgres" ? (
+            <>
+              <code>psql</code>
+            </>
+          ) : (
+            <>
+              <code>wp</code> (WP-CLI) e <code>mysql</code>
+            </>
+          )}
+          {p.redis && <>, <code>redis-cli</code></>}
+          {" "}já usam o PHP e o banco deste projeto.
         </p>
         <button className="btn small" disabled={terminalBusy} onClick={terminal}>
           <Icon name="terminal" size={13} /> {terminalBusy ? "Abrindo…" : "Abrir terminal"}

@@ -1,12 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
 
+/** Banco de dados de um projeto. */
+export type DbEngine = "mysql" | "postgres";
+
 export interface Project {
   id: string;
   name: string;
   docroot: string;
   phpVersion: string;
+  /** MySQL (padrão) ou PostgreSQL. */
+  dbEngine: DbEngine;
   dbVersion: string;
-  /** O banco já foi criado: a versão do MySQL não pode mais ser trocada. */
+  /** O banco já foi criado: o tipo e a versão não podem mais ser trocados. */
   dbInitialized: boolean;
   httpPort: number;
   dbPort: number;
@@ -31,6 +36,9 @@ export interface Project {
   hasWordpress: boolean;
   /** A pasta pública tem arquivos além do index.php de exemplo. */
   docrootInUse: boolean;
+  /** Redis (Valkey) ligado neste projeto. */
+  redis: boolean;
+  redisPort: number;
 }
 
 export interface SslStatus {
@@ -76,8 +84,33 @@ export interface MysqlRelease {
   latest: boolean;
 }
 
+export interface PostgresInstall {
+  fullVersion: string;
+  major: string;
+  postgres: string;
+}
+
+export interface PostgresRelease {
+  version: string;
+  major: string;
+  size: string;
+  installed: boolean;
+  latest: boolean;
+}
+
+export interface ValkeyInstall {
+  fullVersion: string;
+  server: string;
+}
+
+export interface ValkeyRelease {
+  version: string;
+  size: string;
+  installed: boolean;
+}
+
 export interface InstallProgress {
-  /** Versão do PHP (8.3.32), `mysql-<versão>`, `wordpress-<projeto>` ou id da ferramenta (mailpit). */
+  /** Versão do PHP (8.3.32), `mysql-<versão>`, `postgres-<versão>`, `valkey-<versão>`, `wordpress-<projeto>` ou id da ferramenta (mailpit). */
   id: string;
   stage: "download" | "extract" | "verify" | "done" | "error";
   downloaded: number;
@@ -105,6 +138,8 @@ export interface BlueprintInfo {
   /** Projeto a partir do qual foi criado. */
   sourceName: string;
   phpVersion: string;
+  /** Vazio nos modelos antigos (sempre MySQL). */
+  dbEngine?: DbEngine;
   dbVersion: string;
   docroot: string;
   hasWordpress: boolean;
@@ -213,6 +248,8 @@ export const LOG_FILES = [
   "php-error.log",
   "php-fpm.log",
   "mysql.log",
+  "postgres.log",
+  "valkey.log",
   "mailpit.log",
   "wp-cli.log",
   "caddy.log",
@@ -222,15 +259,22 @@ export const api = {
   listProjects: () => invoke<Project[]>("list_projects"),
   checkTools: () => invoke<ToolStatus[]>("check_tools"),
   listPhpVersions: () => invoke<PhpInstall[]>("list_php_versions"),
-  createProject: (name: string, phpVersion: string, dbVersion: string, docroot: string) =>
-    invoke<Project>("create_project", { name, phpVersion, dbVersion, docroot }),
+  createProject: (
+    name: string,
+    phpVersion: string,
+    dbVersion: string,
+    docroot: string,
+    dbEngine: DbEngine = "mysql",
+    redis = false,
+  ) => invoke<Project>("create_project", { name, phpVersion, dbVersion, docroot, dbEngine, redis }),
   startProject: (id: string) => invoke<Project>("start_project", { id }),
   stopProject: (id: string) => invoke<Project>("stop_project", { id }),
   deleteProject: (id: string) => invoke<void>("delete_project", { id }),
   setPhpVersion: (id: string, phpVersion: string) =>
     invoke<Project>("set_php_version", { id, phpVersion }),
-  setDbVersion: (id: string, dbVersion: string) =>
-    invoke<Project>("set_db_version", { id, dbVersion }),
+  setDatabase: (id: string, dbEngine: DbEngine, dbVersion: string) =>
+    invoke<Project>("set_database", { id, dbEngine, dbVersion }),
+  setRedis: (id: string, enabled: boolean) => invoke<Project>("set_redis", { id, enabled }),
   setHttps: (id: string, enabled: boolean) => invoke<Project>("set_https", { id, enabled }),
   setLan: (id: string, enabled: boolean) => invoke<Project>("set_lan", { id, enabled }),
   sslStatus: () => invoke<SslStatus>("ssl_status"),
@@ -240,6 +284,14 @@ export const api = {
   mysqlCatalog: () => invoke<MysqlRelease[]>("mysql_catalog"),
   installMysql: (version: string) => invoke<void>("install_mysql", { version }),
   uninstallMysql: (version: string) => invoke<void>("uninstall_mysql", { version }),
+  listPostgresVersions: () => invoke<PostgresInstall[]>("list_postgres_versions"),
+  postgresCatalog: () => invoke<PostgresRelease[]>("postgres_catalog"),
+  installPostgres: (version: string) => invoke<void>("install_postgres", { version }),
+  uninstallPostgres: (version: string) => invoke<void>("uninstall_postgres", { version }),
+  listValkeyVersions: () => invoke<ValkeyInstall[]>("list_valkey_versions"),
+  valkeyCatalog: () => invoke<ValkeyRelease[]>("valkey_catalog"),
+  installValkey: (version: string) => invoke<void>("install_valkey", { version }),
+  uninstallValkey: (version: string) => invoke<void>("uninstall_valkey", { version }),
   openSite: (id: string, path?: string) => invoke<void>("open_site", { id, path }),
   openTerminal: (id: string) => invoke<void>("open_terminal", { id }),
   installWordpress: (id: string, options: WpOptions) =>
@@ -295,6 +347,16 @@ export function resolveMysql(list: MysqlInstall[], wanted: string): MysqlInstall
   return (
     list.find((m) => m.fullVersion === wanted) ??
     list.find((m) => m.series === wanted) ??
+    list[0] ??
+    null
+  );
+}
+
+/** Encontra o PostgreSQL que de fato rodaria para o valor salvo no projeto (versão completa ou principal). */
+export function resolvePostgres(list: PostgresInstall[], wanted: string): PostgresInstall | null {
+  return (
+    list.find((m) => m.fullVersion === wanted) ??
+    list.find((m) => m.major === wanted) ??
     list[0] ??
     null
   );

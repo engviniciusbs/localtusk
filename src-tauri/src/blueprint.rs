@@ -28,6 +28,8 @@ pub struct BlueprintInfo {
     /// Nome do projeto a partir do qual o blueprint foi criado.
     pub source_name: String,
     pub php_version: String,
+    /// `mysql` ou `postgres`.
+    pub db_engine: String,
     pub db_version: String,
     pub docroot: String,
     pub has_wordpress: bool,
@@ -77,6 +79,7 @@ pub fn info(path: &Path) -> Result<BlueprintInfo, String> {
         created_at: m.created_at,
         source_name: m.name,
         php_version: m.php_version,
+        db_engine: if crate::project::valid_engine(&m.db_engine) { m.db_engine } else { crate::project::ENGINE_MYSQL.into() },
         db_version: m.db_version,
         docroot: m.docroot,
         has_wordpress: m.has_wordpress,
@@ -194,6 +197,7 @@ mod tests {
             name: "Loja".into(),
             docroot: "public".into(),
             php_version: "8.3".into(),
+            db_engine: "mysql".into(),
             db_version: "8.4".into(),
             db_name: "loja".into(),
             http_port: 8001,
@@ -292,5 +296,16 @@ mod tests {
         fake_archive(&src, KIND, "");
         assert_eq!(import(&base, &src).unwrap().name, "Loja");
         let _ = fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn manifesto_antigo_sem_banco_e_mysql() {
+        let old = r#"{"format":1,"id":"a","name":"A","docroot":"","dbName":"a","httpPort":8000,"dbPort":3307,"siteUrl":"","hasWordpress":false,"createdAt":1}"#;
+        let m: Manifest = serde_json::from_str(old).unwrap();
+        assert!(m.db_engine.is_empty());
+        assert!(!crate::project::valid_engine(&m.db_engine), "vazio não é um tipo válido: o código trata como MySQL");
+        let pg = r#"{"format":1,"id":"a","name":"A","docroot":"","dbEngine":"postgres","dbVersion":"16","dbName":"a","httpPort":8000,"dbPort":5433,"siteUrl":"","hasWordpress":false,"createdAt":1}"#;
+        let m: Manifest = serde_json::from_str(pg).unwrap();
+        assert_eq!((m.db_engine.as_str(), m.db_version.as_str()), ("postgres", "16"));
     }
 }
