@@ -428,20 +428,85 @@ pub fn install_wordpress(
 /// Abre um terminal na pasta do projeto com `php`, `wp`, `mysql`… apontando para o PHP,
 /// o banco e o `php.ini` deste projeto.
 pub fn open_terminal(base: &Path, p: &Project) -> Result<(), String> {
-    if std::env::consts::OS != "macos" {
-        return Err("O terminal integrado só está disponível no macOS por enquanto.".into());
+    match std::env::consts::OS {
+        "macos" => {
+            let script_path = prepare_terminal(base, p)?;
+            let status = Command::new("open")
+                .arg("-a")
+                .arg("Terminal")
+                .arg(&script_path)
+                .status()
+                .map_err(|e| format!("não foi possível abrir o Terminal: {e}"))?;
+            if status.success() {
+                Ok(())
+            } else {
+                Err(format!("o Terminal não abriu ({status})"))
+            }
+        }
+        "linux" => {
+            let script_path = prepare_terminal(base, p)?;
+            open_linux_terminal(&script_path)
+        }
+        _ => Err("O terminal integrado só está disponível no macOS e no Linux por enquanto.".into()),
     }
-    let script_path = prepare_terminal(base, p)?;
-    let status = Command::new("open")
-        .arg("-a")
-        .arg("Terminal")
-        .arg(&script_path)
-        .status()
-        .map_err(|e| format!("não foi possível abrir o Terminal: {e}"))?;
-    if status.success() {
-        Ok(())
+}
+
+/// Emuladores de terminal do Linux e o jeito de pedir a cada um que rode um programa.
+/// O `$TERMINAL` da pessoa vem primeiro; `x-terminal-emulator` é o padrão do Debian/Ubuntu.
+fn linux_terminals(script: &Path, preferred: Option<String>) -> Vec<(String, Vec<String>)> {
+    let script = script.display().to_string();
+    let with = |flag: &[&str]| -> Vec<String> {
+        flag.iter().map(|f| f.to_string()).chain(std::iter::once(script.clone())).collect()
+    };
+    let mut list: Vec<(String, Vec<String>)> = vec![];
+    if let Some(t) = preferred.filter(|t| !t.trim().is_empty()) {
+        list.push((t, with(&["-e"])));
+    }
+    for (name, flag) in [
+        ("x-terminal-emulator", &["-e"][..]),
+        ("gnome-terminal", &["--"][..]),
+        ("kgx", &["-e"][..]),
+        ("konsole", &["-e"][..]),
+        ("xfce4-terminal", &["-x"][..]),
+        ("mate-terminal", &["-x"][..]),
+        ("tilix", &["-e"][..]),
+        ("kitty", &[][..]),
+        ("alacritty", &["-e"][..]),
+        ("wezterm", &["start", "--"][..]),
+        ("xterm", &["-e"][..]),
+    ] {
+        list.push((name.to_string(), with(flag)));
+    }
+    list
+}
+
+fn open_linux_terminal(script: &Path) -> Result<(), String> {
+    let mut tried = vec![];
+    for (name, args) in linux_terminals(script, std::env::var("TERMINAL").ok()) {
+        let Some(bin) = tools::find_in_system(&name) else {
+            continue;
+        };
+        tried.push(name.clone());
+        let child = Command::new(&bin)
+            .args(&args)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn();
+        let Ok(mut child) = child else {
+            continue;
+        };
+        // Alguns terminais falham na hora (sem tela, argumento não aceito): nesse caso tenta o próximo.
+        std::thread::sleep(std::time::Duration::from_millis(500));
+        match child.try_wait() {
+            Ok(Some(status)) if !status.success() => continue,
+            _ => return Ok(()),
+        }
+    }
+    if tried.is_empty() {
+        Err("Não achei um emulador de terminal. Instale um (por exemplo gnome-terminal, konsole ou xterm) ou defina a variável TERMINAL.".into())
     } else {
-        Err(format!("o Terminal não abriu ({status})"))
+        Err(format!("Nenhum terminal abriu (tentei: {}).", tried.join(", ")))
     }
 }
 
@@ -611,6 +676,20 @@ fn write_exec(path: &Path, content: &str) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn terminais_do_linux_recebem_o_script_e_respeitam_o_terminal_da_pessoa() {
+        let list = linux_terminals(Path::new("/x/terminal.command"), Some("meu-term".into()));
+        assert_eq!(list[0].0, "meu-term");
+        assert_eq!(list[0].1, vec!["-e", "/x/terminal.command"]);
+        // Todos terminam com o caminho do script, e o gnome-terminal usa `--`.
+        assert!(list.iter().all(|(_, a)| a.last().map(String::as_str) == Some("/x/terminal.command")));
+        let gnome = list.iter().find(|(n, _)| n == "gnome-terminal").unwrap();
+        assert_eq!(gnome.1, vec!["--", "/x/terminal.command"]);
+        // Sem preferência, o padrão do Debian vem primeiro.
+        assert_eq!(linux_terminals(Path::new("/x"), None)[0].0, "x-terminal-emulator");
+        assert_eq!(linux_terminals(Path::new("/x"), Some("  ".into()))[0].0, "x-terminal-emulator");
+    }
 
     #[test]
     fn wordpress_recusa_projeto_postgres() {

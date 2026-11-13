@@ -1,5 +1,5 @@
 {
- "generated": "2026-11-09",
+ "generated": "2026-11-12",
  "versions": [
   {
    "version": "9.7.4",
@@ -14,6 +14,16 @@
      "path": "Downloads/MySQL-9.7",
      "label": "macos15",
      "bytes": 181509239
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-9.7",
+     "file": "mysql-9.7.4-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 83229976
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-9.7",
+     "file": "mysql-9.7.4-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 977757720
     }
    }
   },
@@ -30,6 +40,16 @@
      "path": "Downloads/MySQL-9.7",
      "label": "macos15",
      "bytes": 181261133
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-9.7",
+     "file": "mysql-9.7.2-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 83167220
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-9.7",
+     "file": "mysql-9.7.2-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 972326724
     }
    }
   },
@@ -46,6 +66,16 @@
      "path": "archives/mysql-9.7",
      "label": "macos15",
      "bytes": 180860072
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-9.7",
+     "file": "mysql-9.7.1-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 83047712
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-9.7",
+     "file": "mysql-9.7.1-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 969502904
     }
    }
   },
@@ -62,6 +92,16 @@
      "path": "archives/mysql-9.7",
      "label": "macos15",
      "bytes": 180852571
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-9.7",
+     "file": "mysql-9.7.0-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 83260084
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-9.7",
+     "file": "mysql-9.7.0-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 969434216
     }
    }
   },
@@ -73,6 +113,16 @@
      "path": "Downloads/MySQL-8.4",
      "label": "macos15",
      "bytes": 165362783
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.13-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 79753532
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.13-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 823781920
     }
    }
   },
@@ -89,6 +139,16 @@
      "path": "Downloads/MySQL-8.4",
      "label": "macos15",
      "bytes": 171974960
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.11-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 79777440
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.11-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 821708368
     }
    }
   },
@@ -105,6 +165,16 @@
      "path": "Downloads/MySQL-8.4",
      "label": "macos15",
      "bytes": 171807202
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.10-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 80041064
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.10-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 821008144
     }
    }
   },
@@ -121,6 +191,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos15",
      "bytes": 171809838
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.9-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 80073644
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.9-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 821007868
     }
    }
   },
@@ -137,6 +217,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos15",
      "bytes": 171209391
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.8-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 66039584
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.8-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 909582316
     }
    }
   },
@@ -153,6 +243,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos15",
      "bytes": 171190441
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.7-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 66043836
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.7-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 909386108
     }
    }
   },
@@ -169,6 +269,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos15",
      "bytes": 171124041
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.6-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 66009936
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.6-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 909017708
     }
    }
   },
@@ -185,6 +295,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos15",
      "bytes": 168419442
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.5-linux-glibc2.28-x86_64-minimal.tar.xz",
+     "bytes": 65944384
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.5-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 907157500
     }
    }
   },
@@ -201,6 +321,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos15",
      "bytes": 168225587
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.4-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 909004856
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.4-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 898509848
     }
    }
   },
@@ -217,6 +347,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos14",
      "bytes": 168667303
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.3-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 908299408
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.3-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 897844816
     }
    }
   },
@@ -233,6 +373,16 @@
      "path": "archives/mysql-8.4",
      "label": "macos14",
      "bytes": 168494682
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.2-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 482046400
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.4",
+     "file": "mysql-8.4.2-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 476172896
     }
    }
   },
@@ -249,6 +399,16 @@
      "path": "Downloads/MySQL-8.4",
      "label": "macos14",
      "bytes": 168383437
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.0-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 481157440
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.4",
+     "file": "mysql-8.4.0-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 475245356
     }
    }
   },
@@ -265,6 +425,16 @@
      "path": "Downloads/MySQL-8.0",
      "label": "macos15",
      "bytes": 176499229
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.46-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 892567132
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.46-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 880055484
     }
    }
   },
@@ -281,6 +451,16 @@
      "path": "Downloads/MySQL-8.0",
      "label": "macos15",
      "bytes": 175942001
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.45-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 891437968
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.45-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 878432716
     }
    }
   },
@@ -297,6 +477,16 @@
      "path": "Downloads/MySQL-8.0",
      "label": "macos15",
      "bytes": 175890728
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.44-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 891250172
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.44-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 878284688
     }
    }
   },
@@ -313,6 +503,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos15",
      "bytes": 175902381
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.43-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 890583280
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.43-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 877440604
     }
    }
   },
@@ -329,6 +529,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos15",
      "bytes": 173140184
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.42-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 888706200
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.42-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 875722444
     }
    }
   },
@@ -345,6 +555,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos15",
      "bytes": 172991634
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.41-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 879916864
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.41-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 866995520
     }
    }
   },
@@ -361,6 +581,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos14",
      "bytes": 173573401
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.40-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 879080132
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.40-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 865953364
     }
    }
   },
@@ -377,6 +607,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos14",
      "bytes": 173418454
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.39-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 464237836
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.39-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 456536988
     }
    }
   },
@@ -393,6 +633,16 @@
      "path": "Downloads/MySQL-8.0",
      "label": "macos14",
      "bytes": 173332649
+    },
+    "linux-x86_64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.37-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 463397412
+    },
+    "linux-aarch64": {
+     "path": "Downloads/MySQL-8.0",
+     "file": "mysql-8.0.37-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 455746980
     }
    }
   },
@@ -409,6 +659,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos14",
      "bytes": 172683781
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.36-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 459718996
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.36-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 452371120
     }
    }
   },
@@ -425,6 +685,16 @@
      "path": "archives/mysql-8.0",
      "label": "macos13",
      "bytes": 188302009
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.35-linux-glibc2.28-x86_64.tar.xz",
+     "bytes": 459678820
+    },
+    "linux-aarch64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.35-linux-glibc2.28-aarch64.tar.xz",
+     "bytes": 452183452
     }
    }
   },
@@ -441,6 +711,11 @@
      "path": "archives/mysql-8.0",
      "label": "macos13",
      "bytes": 188242959
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.34-linux-glibc2.17-x86_64-minimal.tar.xz",
+     "bytes": 60558812
     }
    }
   },
@@ -457,6 +732,11 @@
      "path": "archives/mysql-8.0",
      "label": "macos13",
      "bytes": 190256814
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.33-linux-glibc2.17-x86_64-minimal.tar.xz",
+     "bytes": 60181648
     }
    }
   },
@@ -473,6 +753,11 @@
      "path": "archives/mysql-8.0",
      "label": "macos13",
      "bytes": 187943845
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.32-linux-glibc2.17-x86_64-minimal.tar.xz",
+     "bytes": 60201944
     }
    }
   },
@@ -489,6 +774,11 @@
      "path": "archives/mysql-8.0",
      "label": "macos12",
      "bytes": 186704097
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.31-linux-glibc2.17-x86_64-minimal.tar.xz",
+     "bytes": 60148296
     }
    }
   },
@@ -505,6 +795,11 @@
      "path": "archives/mysql-8.0",
      "label": "macos12",
      "bytes": 181767006
+    },
+    "linux-x86_64": {
+     "path": "archives/mysql-8.0",
+     "file": "mysql-8.0.30-linux-glibc2.17-x86_64-minimal.tar.xz",
+     "bytes": 55042240
     }
    }
   }

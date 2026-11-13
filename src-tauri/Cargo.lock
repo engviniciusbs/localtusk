@@ -427,6 +427,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4ff2a8126fff0f8c839080d619675a585e61720bb12d2baceae45769fd66f155"
 dependencies = [
  "find-msvc-tools",
+ "jobserver",
+ "libc",
  "shlex",
 ]
 
@@ -1896,6 +1898,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "jobserver"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1c00acbd29eabad4a2392fa0e921c874934dbbf4194312ad20f04a0ed67a3cb3"
+dependencies = [
+ "getrandom 0.4.3",
+ "libc",
+]
+
+[[package]]
 name = "js-sys"
 version = "0.3.107"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1988,6 +2000,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "liblzma"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "aa980ea6744074a5b5e0ac6b164aca94fc970121869b3e78ae12a2b0097dbea7"
+dependencies = [
+ "liblzma-sys",
+]
+
+[[package]]
+name = "liblzma-sys"
+version = "0.4.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c7e3581f367a78d7b7e7ae948d023310556f0cfc13156c2e4e00e25616492b9"
+dependencies = [
+ "cc",
+ "libc",
+ "pkg-config",
+]
+
+[[package]]
 name = "libredox"
 version = "0.1.25"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2010,11 +2042,12 @@ checksum = "47d9d19d1d6efa0109d2f65ff4c85cddd50bd572e5a00127ab10987290bcefae"
 
 [[package]]
 name = "localtusk"
-version = "0.8.0"
+version = "0.9.0"
 dependencies = [
  "dirs 6.0.0",
  "flate2",
  "libc",
+ "liblzma",
  "serde",
  "serde_json",
  "sha2 0.11.1",

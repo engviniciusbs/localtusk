@@ -102,8 +102,8 @@ pub fn pick(base: &Path) -> Option<ValkeyInstall> {
     installs(base).into_iter().next()
 }
 
-/// As Xcode Command Line Tools (`make` e o compilador) estão instaladas? Sem elas, rodar o
-/// `make` abriria um diálogo de instalação do macOS no meio do app.
+/// As ferramentas de compilação (`make` e o compilador C) estão instaladas? No macOS são as Xcode
+/// Command Line Tools; sem elas, rodar o `make` abriria um diálogo de instalação no meio do app.
 fn build_tools_ready() -> Result<(), String> {
     #[cfg(target_os = "macos")]
     {
@@ -121,7 +121,29 @@ fn build_tools_ready() -> Result<(), String> {
             );
         }
     }
+    #[cfg(target_os = "linux")]
+    {
+        let missing: Vec<&str> = [("make", &["make"][..]), ("um compilador C (gcc ou cc)", &["cc", "gcc"][..])]
+            .into_iter()
+            .filter(|(_, names)| !names.iter().any(|n| in_path(n)))
+            .map(|(label, _)| label)
+            .collect();
+        if !missing.is_empty() {
+            return Err(format!(
+                "Para instalar o Redis (Valkey) o app precisa compilá-lo, e faltam: {}. No Ubuntu/Debian rode `sudo apt install build-essential`; no Fedora, `sudo dnf install make gcc`. Depois tente de novo.",
+                missing.join(" e ")
+            ));
+        }
+    }
     Ok(())
+}
+
+/// O programa existe em algum lugar do `PATH`?
+#[cfg(target_os = "linux")]
+fn in_path(name: &str) -> bool {
+    std::env::var_os("PATH")
+        .map(|paths| std::env::split_paths(&paths).any(|dir| dir.join(name).is_file()))
+        .unwrap_or(false)
 }
 
 /// Baixa o código-fonte, confere o SHA-256, compila e valida. Bloqueante.

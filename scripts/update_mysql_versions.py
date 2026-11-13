@@ -5,7 +5,8 @@ O app NÃO sonda servidores em tempo de execução (isso é lento e o CDN da Ora
 rajadas de requisições). Quando sair uma versão nova do MySQL, rode este script e faça commit
 do JSON atualizado.
 
-Uso:  python3 scripts/update_mysql_versions.py
+Uso:  python3 scripts/update_mysql_versions.py            # tudo (macOS e Linux)
+      python3 scripts/update_mysql_versions.py --linux    # só acrescenta/atualiza o Linux no JSON atual
 
 É educado de propósito: uma requisição por vez, com pausa entre elas, e aborta se o servidor
 começar a recusar (403/429).
@@ -63,7 +64,47 @@ def find_build(series, version, arch, hint=None):
     return None
 
 
+# Linux: o pacote genérico "minimal" (cerca de 80 MB) só existe para x86_64 e a partir do 8.4;
+# no aarch64, e no 8.0, só há o pacote completo (800 MB ou mais).
+LINUX_ARCHS = {"linux-x86_64": ["x86_64-minimal", "x86_64"], "linux-aarch64": ["aarch64"]}
+LINUX_LABELS = ["linux-glibc2.28", "linux-glibc2.17"]
+
+
+def find_linux(series, version, variants):
+    for path in candidates(series):
+        for label in LINUX_LABELS:
+            for variant in variants:
+                file = f"mysql-{version}-{label}-{variant}.tar.xz"
+                size = head(f"{CDN}/{path}/{file}")
+                if size is not None:
+                    return {"path": path, "file": file, "bytes": size}
+    return None
+
+
+def add_linux(versions):
+    for v in versions:
+        for key, variants in LINUX_ARCHS.items():
+            v["builds"].pop(key, None)
+            build = find_linux(v["series"], v["version"], variants)
+            if build:
+                v["builds"][key] = build
+        linux = [k for k in v["builds"] if k.startswith("linux-")]
+        print(f"  {v['version']}: linux {', '.join(linux) or '-'}")
+
+
+def save(versions):
+    versions.sort(key=lambda v: tuple(int(x) for x in v["version"].split(".")), reverse=True)
+    OUT.parent.mkdir(parents=True, exist_ok=True)
+    OUT.write_text(json.dumps({"generated": date.today().isoformat(), "versions": versions}, indent=1) + "\n")
+    print(f"\n{len(versions)} versões gravadas em {OUT} ({requests} requisições)")
+
+
 def main():
+    if "--linux" in sys.argv:
+        versions = json.loads(OUT.read_text())["versions"]
+        add_linux(versions)
+        save(versions)
+        return
     versions = []
     for series, max_patch in SERIES.items():
         missing_streak = 0
@@ -85,11 +126,8 @@ def main():
             versions.append({"version": version, "series": series, "builds": builds})
             print(f"  {version}: {', '.join(builds)}  ({arm['label']}, {arm['bytes'] // 1024 // 1024} MB)")
 
-    versions.sort(key=lambda v: tuple(int(x) for x in v["version"].split(".")), reverse=True)
-    OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps({"generated": date.today().isoformat(), "versions": versions}, indent=1) + "\n")
-    print(f"\n{len(versions)} versões gravadas em {OUT} ({requests} requisições)")
-
+    add_linux(versions)
+    save(versions)
 
 if __name__ == "__main__":
     main()

@@ -1,6 +1,6 @@
 [package]
 name = "localtusk"
-version = "0.8.0"
+version = "0.9.0"
 description = "LocalTusk - ambientes PHP locais sem Docker"
 authors = ["LocalTusk contributors"]
 license = "MIT"
@@ -27,6 +27,10 @@ sha2 = "0.11.1"
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+# Os pacotes do MySQL para Linux vêm em .tar.xz (compila o xz junto, sem depender do sistema).
+[target.'cfg(target_os = "linux")'.dependencies]
+liblzma = { version = "0.4", features = ["static"] }
 
 [profile.release]
 codegen-units = 1

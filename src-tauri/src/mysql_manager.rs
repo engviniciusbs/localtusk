@@ -43,13 +43,18 @@ fn series_of(version: &str) -> String {
     version.split('.').take(2).collect::<Vec<_>>().join(".")
 }
 
+/// Chave da plataforma no catálogo: `arm64`/`x86_64` no macOS, `linux-x86_64`/`linux-aarch64` no Linux.
 fn arch() -> Option<&'static str> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Some("arm64"),
         ("macos", "x86_64") => Some("x86_64"),
+        ("linux", "aarch64") => Some("linux-aarch64"),
+        ("linux", "x86_64") => Some("linux-x86_64"),
         _ => None,
     }
 }
+
+const UNSUPPORTED: &str = "O download do MySQL só está disponível para macOS e Linux por enquanto.";
 
 #[derive(Deserialize)]
 struct Manifest {
@@ -67,7 +72,11 @@ struct Build {
     /// Pasta no CDN: `Downloads/MySQL-8.4` (versão atual) ou `archives/mysql-8.4` (anteriores).
     path: String,
     /// Rótulo do macOS usado no nome do arquivo (`macos15`, `macos14`…).
+    #[serde(default)]
     label: String,
+    /// Nome completo do arquivo, quando não segue o padrão do macOS (Linux: `…-linux-glibc2.28-x86_64-minimal.tar.xz`).
+    #[serde(default)]
+    file: Option<String>,
     bytes: u64,
 }
 
@@ -81,7 +90,10 @@ fn manifest() -> Vec<ManifestVersion> {
 /// Oracle a move de `Downloads/` para `archives/`, então a segunda opção cobre esse caso.
 fn urls_for(version: &str, build: &Build, arch: &str) -> Vec<String> {
     let series = series_of(version);
-    let file = format!("mysql-{version}-{}-{arch}.tar.gz", build.label);
+    let file = build
+        .file
+        .clone()
+        .unwrap_or_else(|| format!("mysql-{version}-{}-{arch}.tar.gz", build.label));
     let mut paths = vec![build.path.clone()];
     for alt in [format!("Downloads/MySQL-{series}"), format!("archives/mysql-{series}")] {
         if !paths.contains(&alt) {
@@ -105,7 +117,7 @@ pub struct MysqlRelease {
 
 /// Versões disponíveis para download nesta máquina, da mais nova para a mais antiga.
 pub fn catalog(base: &Path) -> Result<Vec<MysqlRelease>, String> {
-    let arch = arch().ok_or("O download do MySQL só está disponível para macOS por enquanto.")?;
+    let arch = arch().ok_or(UNSUPPORTED)?;
     let installed = managed_versions(base);
     let mut versions: Vec<(String, u64)> = manifest()
         .into_iter()
@@ -131,8 +143,14 @@ fn keep(rel: &Path) -> bool {
     let s = rel.to_string_lossy();
     // `bin/*.dylib`: o mysqld carrega libprotobuf-lite via @loader_path (na própria pasta bin/).
     let bin_lib = s.starts_with("bin/") && !s[4..].contains('/') && (s.ends_with(".dylib") || s.contains(".so"));
+    // No Linux o pacote completo traz bibliotecas estáticas (`.a`), a versão de depuração dos
+    // plugins e dicionários do MeCab, que ocupam centenas de MB e o app não usa.
+    let lib = s.starts_with("lib/")
+        && !s.ends_with(".a")
+        && !s.starts_with("lib/plugin/debug/")
+        && !s.starts_with("lib/mecab/"); // dicionários do analisador de texto em japonês (~120 MB)
     bin_lib
-        || s.starts_with("lib/")
+        || lib
         || s.starts_with("share/")
         || matches!(
             s.as_ref(),
@@ -145,7 +163,7 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
     if !valid_version(version) {
         return Err("versão inválida".into());
     }
-    let arch = arch().ok_or("O download do MySQL só está disponível para macOS por enquanto.")?;
+    let arch = arch().ok_or(UNSUPPORTED)?;
     let final_dir = install_dir(base, version);
     if final_dir.join("bin").join("mysqld").is_file() {
         return Ok(());
@@ -166,12 +184,12 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
         .into_iter()
         .find(|v| v.version == version)
         .and_then(|v| v.builds.get(arch).cloned())
-        .ok_or_else(|| format!("MySQL {version} não está disponível para este Mac."))?;
+        .ok_or_else(|| format!("MySQL {version} não está disponível para este sistema."))?;
     let urls = urls_for(version, &build, arch);
 
     let root = mysql_root(base);
     let tmp_dir = root.join(format!(".tmp-{version}"));
-    let archive = root.join(format!(".download-{version}.tar.gz"));
+    let archive = root.join(format!(".download-{version}"));
     let _ = fs::remove_dir_all(&tmp_dir);
     fs::create_dir_all(&root).map_err(|e| e.to_string())?;
 
@@ -196,7 +214,7 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
         emit("extract", 0, 0);
         fs::create_dir_all(&tmp_dir).map_err(|e| e.to_string())?;
         let file = File::open(&archive).map_err(|e| e.to_string())?;
-        let mut tar = tar::Archive::new(flate2::read::GzDecoder::new(file));
+        let mut tar = tar::Archive::new(open_tarball(file, urls.first().map(String::as_str).unwrap_or(""))?);
         for entry in tar.entries().map_err(|e| e.to_string())? {
             let mut entry = entry.map_err(|e| format!("falha ao extrair: {e}"))?;
             let path = entry.path().map_err(|e| e.to_string())?.into_owned();
@@ -220,6 +238,8 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
 
         // Verificação: o binário precisa rodar e reportar a versão pedida.
         emit("verify", 0, 0);
+        #[cfg(target_os = "linux")]
+        link_libaio(&tmp_dir)?;
         let mysqld = tmp_dir.join("bin").join("mysqld");
         if !mysqld.is_file() {
             return Err("o pacote do MySQL não contém o mysqld".into());
@@ -232,7 +252,8 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
         if !text.contains(&format!("Ver {version}")) {
             let err = String::from_utf8_lossy(&out.stderr);
             let detail = text.lines().chain(err.lines()).find(|l| !l.trim().is_empty()).unwrap_or("sem saída");
-            return Err(format!("verificação falhou ({}): {detail}", out.status));
+            let hint = missing_library_hint(detail).map(|h| format!(" {h}")).unwrap_or_default();
+            return Err(format!("verificação falhou ({}): {detail}.{hint}", out.status));
         }
 
         let _ = fs::remove_dir_all(&final_dir);
@@ -245,6 +266,57 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
         let _ = fs::remove_dir_all(&tmp_dir);
     }
     result
+}
+
+/// Explica como instalar a biblioteca do sistema que o `mysqld` não achou (só acontece no Linux).
+fn missing_library_hint(detail: &str) -> Option<String> {
+    if detail.contains("libaio") {
+        Some("Instale a libaio: no Ubuntu/Debian, `sudo apt install libaio1t64` (ou `libaio1`); no Fedora, `sudo dnf install libaio`.".into())
+    } else if detail.contains("libnuma") {
+        Some("Instale a libnuma: no Ubuntu/Debian, `sudo apt install libnuma1`; no Fedora, `sudo dnf install numactl-libs`.".into())
+    } else if detail.contains("libncurses") || detail.contains("libtinfo") {
+        Some("Instale a libtinfo: no Ubuntu/Debian, `sudo apt install libtinfo6`; no Fedora, `sudo dnf install ncurses-libs`.".into())
+    } else {
+        None
+    }
+}
+
+/// O `mysqld` do Linux pede `libaio.so.1`, mas o Ubuntu 24.04 e o Debian 13 renomearam o pacote
+/// para `libaio1t64`, cuja biblioteca se chama `libaio.so.1t64`. Quando só existe o nome novo,
+/// põe um atalho com o nome antigo na pasta privada do próprio MySQL (`lib/private`, que o
+/// `mysqld` consulta antes do sistema). Sem a biblioteca, a verificação seguinte explica o que instalar.
+#[cfg(target_os = "linux")]
+fn link_libaio(install: &Path) -> Result<(), String> {
+    let triplet = match std::env::consts::ARCH {
+        "aarch64" => "aarch64-linux-gnu",
+        _ => "x86_64-linux-gnu",
+    };
+    let dirs: Vec<PathBuf> = [format!("/usr/lib/{triplet}"), format!("/lib/{triplet}"), "/usr/lib64".into(), "/usr/lib".into(), "/lib64".into(), "/lib".into()]
+        .into_iter()
+        .map(PathBuf::from)
+        .collect();
+    if dirs.iter().any(|d| d.join("libaio.so.1").exists()) {
+        return Ok(());
+    }
+    let Some(real) = dirs.iter().map(|d| d.join("libaio.so.1t64")).find(|p| p.exists()) else {
+        return Ok(());
+    };
+    let private = install.join("lib").join("private");
+    fs::create_dir_all(&private).map_err(|e| e.to_string())?;
+    let link = private.join("libaio.so.1");
+    let _ = fs::remove_file(&link);
+    std::os::unix::fs::symlink(&real, &link).map_err(|e| format!("não foi possível ligar a libaio: {e}"))
+}
+
+/// Abre o pacote como `tar`: `.tar.xz` (Linux) ou `.tar.gz` (macOS), pela extensão da URL.
+fn open_tarball(file: File, url: &str) -> Result<Box<dyn std::io::Read>, String> {
+    if url.ends_with(".tar.xz") {
+        #[cfg(target_os = "linux")]
+        return Ok(Box::new(liblzma::read::XzDecoder::new(file)));
+        #[cfg(not(target_os = "linux"))]
+        return Err("pacotes .tar.xz só são lidos no Linux".into());
+    }
+    Ok(Box::new(flate2::read::GzDecoder::new(file)))
 }
 
 pub fn uninstall(base: &Path, version: &str) -> Result<(), String> {
@@ -359,4 +431,30 @@ pub fn pick(base: &Path, wanted: &str) -> Option<MysqlInstall> {
         .or_else(|| all.iter().find(|i| i.series == wanted))
         .cloned()
         .or_else(|| all.into_iter().next())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn explica_biblioteca_que_falta() {
+        let h = missing_library_hint("mysqld: error while loading shared libraries: libaio.so.1: cannot open shared object file").unwrap();
+        assert!(h.contains("libaio1t64") && h.contains("dnf"));
+        assert!(missing_library_hint("libnuma.so.1: cannot open").unwrap().contains("libnuma1"));
+        assert!(missing_library_hint("sem saída").is_none());
+    }
+
+    #[test]
+    fn catalogo_tem_o_linux_com_arquivo_proprio() {
+        let versions = manifest();
+        let v = versions.iter().find(|v| v.version.starts_with("8.4.")).expect("8.4");
+        let x86 = v.builds.get("linux-x86_64").expect("linux x86_64");
+        let urls = urls_for(&v.version, x86, "linux-x86_64");
+        assert!(urls[0].ends_with(".tar.xz"), "{urls:?}");
+        assert!(urls[0].contains("linux-glibc"), "{urls:?}");
+        // O macOS continua com o nome antigo (.tar.gz com o rótulo do sistema).
+        let mac = v.builds.get("arm64").expect("mac");
+        assert!(urls_for(&v.version, mac, "arm64")[0].ends_with("-arm64.tar.gz"));
+    }
 }

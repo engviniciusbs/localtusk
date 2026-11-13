@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Gera src-tauri/resources/postgres-versions.json, o catálogo de versões do PostgreSQL embutido no app.
 
-Os binários vêm do projeto theseus-rs/postgresql-binaries (builds para macOS com psql, pg_dump
-e o servidor completo). O app não consulta a API do GitHub em tempo de execução (limite de 60
+Os binários vêm do projeto theseus-rs/postgresql-binaries (builds para macOS e Linux com psql,
+pg_dump e o servidor completo). O app não consulta a API do GitHub em tempo de execução (limite de 60
 requisições por hora sem login), então o catálogo é gerado aqui e vai junto com o app.
 
 Guarda o patch mais novo de cada versão principal (14, 15, 16...) com tamanho e SHA-256 de cada
@@ -17,7 +17,13 @@ from pathlib import Path
 
 REPO = "theseus-rs/postgresql-binaries"
 MIN_MAJOR = 14
-TARGETS = {"arm64": "aarch64-apple-darwin", "x86_64": "x86_64-apple-darwin"}
+# chave no catálogo -> alvo do pacote (macOS e Linux)
+TARGETS = {
+    "arm64": "aarch64-apple-darwin",
+    "x86_64": "x86_64-apple-darwin",
+    "linux-aarch64": "aarch64-unknown-linux-gnu",
+    "linux-x86_64": "x86_64-unknown-linux-gnu",
+}
 OUT = Path(__file__).resolve().parent.parent / "src-tauri" / "resources" / "postgres-versions.json"
 
 

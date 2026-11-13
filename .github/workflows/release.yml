@@ -1,0 +1,134 @@
+name: Release
+
+# Gera os instaladores do LocalTusk e publica numa release do GitHub.
+#
+#   git tag v0.9.0 && git push origin v0.9.0
+#
+# A versão da tag precisa ser a mesma de package.json, src-tauri/tauri.conf.json e src-tauri/Cargo.toml
+# (o job `versao` confere antes de gastar tempo compilando).
+#
+# Arquivos publicados (os nomes são o que a página de download do site procura):
+#   macOS    LocalTusk_<v>_aarch64.dmg (Apple Silicon) e LocalTusk_<v>_x64.dmg (Intel)
+#   Linux    LocalTusk_<v>_amd64.AppImage / .deb / .rpm  e as versões arm64/aarch64
+#
+# Os apps não são assinados pela Apple (macOS) nem por uma autoridade (Linux): o macOS pede
+# "Abrir" com o botão direito na primeira vez. O build do macOS usa assinatura "ad-hoc"
+# (signingIdentity "-" em tauri.conf.json), exigida para abrir apps em Apple Silicon.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag da release (ex.: v0.9.0). A tag precisa existir."
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  versao:
+    name: Conferir versão
+    runs-on: ubuntu-24.04
+    outputs:
+      tag: ${{ steps.v.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      - id: v
+        run: |
+          TAG="${{ github.event.inputs.tag || github.ref_name }}"
+          WANT="${TAG#v}"
+          for f in package.json src-tauri/tauri.conf.json; do
+            HAVE=$(python3 -c "import json,sys; print(json.load(open('$f'))['version'])")
+            [ "$HAVE" = "$WANT" ] || { echo "::error::$f está na versão $HAVE, mas a tag é $TAG"; exit 1; }
+          done
+          HAVE=$(sed -n 's/^version = "\(.*\)"/\1/p' src-tauri/Cargo.toml | head -1)
+          [ "$HAVE" = "$WANT" ] || { echo "::error::Cargo.toml está na versão $HAVE, mas a tag é $TAG"; exit 1; }
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: ${{ matrix.name }}
+    needs: versao
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS (Apple Silicon)
+            os: macos-latest
+            bundles: dmg
+          - name: macOS (Intel)
+            os: macos-15-intel
+            bundles: dmg
+          - name: Linux (x86_64)
+            os: ubuntu-24.04
+            bundles: appimage,deb,rpm
+          - name: Linux (ARM64)
+            os: ubuntu-24.04-arm
+            bundles: appimage,deb,rpm
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Dependências do Linux
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            libssl-dev \
+            patchelf \
+            rpm \
+            xdg-utils \
+            file
+
+      - name: Instalar dependências do front-end
+        run: pnpm install --frozen-lockfile
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # O AppImage empacota com o linuxdeploy, que no runner precisa rodar sem FUSE.
+          APPIMAGE_EXTRACT_AND_RUN: "1"
+        with:
+          tauriScript: pnpm tauri
+          tagName: ${{ needs.versao.outputs.tag }}
+          releaseName: "LocalTusk ${{ needs.versao.outputs.tag }}"
+          releaseBody: |
+            Instaladores do LocalTusk ${{ needs.versao.outputs.tag }}.
+
+            - **macOS**: baixe o `.dmg` do seu Mac (`aarch64` é Apple Silicon, `x64` é Intel). O app não é assinado pela Apple: na primeira abertura, clique com o botão direito no app e escolha **Abrir** (ou rode `xattr -cr /Applications/LocalTusk.app`).
+            - **Linux**: `.AppImage` (qualquer distribuição: `chmod +x` e abra), `.deb` (Ubuntu e Debian) ou `.rpm` (Fedora e openSUSE). O app baixa o resto sozinho; o MySQL pede `libaio` e `libnuma`, e o Redis (Valkey) pede `make` e `gcc`.
+
+            Veja as novidades e as instruções completas em https://jhonatanmp.github.io/localtusk/baixar/
+          releaseDraft: false
+          prerelease: false
+          args: --bundles ${{ matrix.bundles }}

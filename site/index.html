@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>LocalTusk — ambiente PHP local grátis, sem Docker</title>
-  <meta name="description" content="O melhor ambiente para desenvolver em PHP no macOS: Caddy, PHP-FPM, MySQL ou PostgreSQL e Redis nativos, Adminer Neo, Mailpit, WP-CLI, inspetor de API e backups. Gratuito e open source (MIT).">
+  <meta name="description" content="O melhor ambiente para desenvolver em PHP no macOS e no Linux: Caddy, PHP-FPM, MySQL ou PostgreSQL e Redis nativos, Adminer Neo, Mailpit, WP-CLI, inspetor de API e backups. Gratuito e open source (MIT).">
   <link rel="canonical" href="https://jhonatanmp.github.io/localtusk/">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0d0e15">
@@ -48,9 +48,9 @@
         "@type": "SoftwareApplication",
         "@id": "https://jhonatanmp.github.io/localtusk/#app",
         "name": "LocalTusk",
-        "description": "Ambiente de desenvolvimento PHP local para macOS, sem Docker, com Caddy, PHP-FPM, MySQL ou PostgreSQL e Redis nativos, Adminer Neo, Mailpit, WP-CLI, inspetor de API, backups e blueprints.",
+        "description": "Ambiente de desenvolvimento PHP local para macOS e Linux, sem Docker, com Caddy, PHP-FPM, MySQL ou PostgreSQL e Redis nativos, Adminer Neo, Mailpit, WP-CLI, inspetor de API, backups e blueprints.",
         "applicationCategory": "DeveloperApplication",
-        "operatingSystem": "macOS",
+        "operatingSystem": "macOS, Linux",
         "inLanguage": "pt-BR",
         "url": "https://jhonatanmp.github.io/localtusk/",
         "downloadUrl": "https://jhonatanmp.github.io/localtusk/baixar/",
@@ -98,11 +98,11 @@
       <div class="glow glow-a" aria-hidden="true"></div>
       <div class="glow glow-b" aria-hidden="true"></div>
       <div class="container">
-        <p class="pill" data-hero><span class="tag">macOS</span> <span><b>Gratuito</b> e open source, sob licença MIT</span></p>
+        <p class="pill" data-hero><span class="tag">macOS e Linux</span> <span><b>Gratuito</b> e open source, sob licença MIT</span></p>
         <h1>O melhor ambiente para <span class="grad">desenvolver em PHP</span></h1>
         <p class="hero-sub" data-hero>O LocalTusk monta cada projeto com Caddy, PHP-FPM, MySQL ou PostgreSQL e Redis nativos, sem Docker e sem configuração. Escolha as versões, clique em iniciar e abra o site em <code class="mono">projeto.localhost</code>.</p>
         <div class="hero-cta" data-hero>
-          <a class="btn btn-primary" href="baixar/"><svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> Baixar para macOS</a>
+          <a class="btn btn-primary" href="baixar/" data-cta><svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> <span data-cta-label>Baixar para macOS</span></a>
           <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk" rel="noopener"><svg class="ico ico-fill"><use href="assets/img/icons.svg#i-github"/></svg> Ver no GitHub</a>
         </div>
         <ul class="hero-chips" data-hero>
@@ -110,7 +110,7 @@
           <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Sem conta e sem telemetria</li>
           <li><svg class="ico"><use href="assets/img/icons.svg#i-check"/></svg> Seus dados ficam na sua máquina</li>
         </ul>
-        <p class="hero-note" data-hero>Windows e Linux estão em desenvolvimento.</p>
+        <p class="hero-note" data-hero><span data-cta-meta>Para macOS (Apple Silicon e Intel) e Linux (x86_64 e ARM64). Windows em desenvolvimento.</span></p>
 
         <div class="stage" data-hero>
           <div class="window">
@@ -221,7 +221,7 @@
           <article class="card c-3" data-reveal>
             <span class="icon-chip"><svg class="ico"><use href="assets/img/icons.svg#i-shield"/></svg></span>
             <h3>HTTPS com um clique</h3>
-            <p>Ligue o HTTPS no projeto e o app cria um certificado local e pede, uma vez, a sua autorização para o sistema confiar nele. O site abre em <code class="mono">https://projeto.localhost</code>, com cadeado.</p>
+            <p>Ligue o HTTPS no projeto e o app cria um certificado local e pede, uma vez, a sua autorização para o sistema confiar nele (no macOS; no Linux o app mostra onde está o certificado para você instalar). O site abre em <code class="mono">https://projeto.localhost</code>, com cadeado.</p>
           </article>
 
           <article class="card c-3" data-reveal>
@@ -357,7 +357,7 @@
               </tr>
               <tr>
                 <th scope="row">Plataformas</th>
-                <td class="us">macOS hoje<br><span class="no">Windows e Linux em desenvolvimento</span></td>
+                <td class="us">macOS e Linux (beta)<br><span class="no">Windows em desenvolvimento</span></td>
                 <td>macOS e Windows</td>
                 <td>macOS e Windows</td>
                 <td>Windows, macOS e Linux</td>
@@ -400,7 +400,7 @@
         <div class="who">
           <article class="card best" data-reveal>
             <h3>LocalTusk <span class="badge">Para quem</span></h3>
-            <p>Quer um app gratuito e aberto que junte MySQL ou PostgreSQL, Redis, e-mail de teste, inspetor de API, backups e blueprints, e usa macOS.</p>
+            <p>Quer um app gratuito e aberto que junte MySQL ou PostgreSQL, Redis, e-mail de teste, inspetor de API, backups e blueprints, e usa macOS ou Linux.</p>
           </article>
           <article class="card" data-reveal>
             <h3>Laravel Herd</h3>
@@ -419,7 +419,7 @@
         <div class="limits" data-reveal>
           <h3><svg class="ico"><use href="assets/img/icons.svg#i-alert"/></svg> O que o LocalTusk ainda não tem</h3>
           <ul>
-            <li>Versões para Windows e Linux: o código compila lá, mas a instalação do MySQL e o uso completo ainda estão em desenvolvimento.</li>
+            <li>Windows: o código compila lá, mas a instalação do MySQL e do PostgreSQL e o uso completo ainda estão em desenvolvimento. No Linux o app é beta: a pilha completa foi testada no Ubuntu 24.04 (ARM64), mas ainda tem poucas horas de uso real e o HTTPS precisa ter o certificado instalado à mão.</li>
             <li>Outras linguagens e bancos: por enquanto o app cobre PHP 8.x com MySQL ou PostgreSQL e Redis (MongoDB e outros ficam de fora). O WordPress só funciona em projetos MySQL.</li>
             <li>Anos de estrada: é um projeto novo, com comunidade pequena.</li>
           </ul>
@@ -473,8 +473,8 @@ Software…</div>
             <div class="answer">Não. Cada projeto usa processos nativos (Caddy, PHP-FPM, MySQL ou PostgreSQL e, se você ligar, Redis), que o próprio app baixa e gerencia. Não há containers nem máquina virtual.</div>
           </details>
           <details>
-            <summary>Funciona no Windows e no Linux? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
-            <div class="answer">Hoje o app é feito e usado no macOS. O código compila e passa nos testes automáticos nos três sistemas, mas a instalação do MySQL e o uso completo no Windows e no Linux ainda estão em desenvolvimento.</div>
+            <summary>Funciona no Linux e no Windows? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
+            <div class="answer">Funciona no Linux, em versão beta: há instaladores <code>.AppImage</code>, <code>.deb</code> e <code>.rpm</code> para x86_64 e ARM64, e a pilha completa (PHP, MySQL, PostgreSQL, Redis, Caddy, terminal e backups) passou nos nossos testes no Ubuntu 24.04 (ARM64). O macOS segue sendo o sistema principal. No Windows o código compila, mas a instalação dos bancos e o uso completo ainda estão em desenvolvimento.</div>
           </details>
           <details>
             <summary>É gratuito mesmo? <svg class="ico"><use href="assets/img/icons.svg#i-chevron"/></svg></summary>
@@ -507,7 +507,7 @@ Software…</div>
         <h2 id="t-cta" data-reveal>Um ambiente PHP pronto em poucos minutos</h2>
         <p class="lead" style="margin-inline:auto" data-reveal>Baixe o LocalTusk, crie o primeiro projeto e abra o site no navegador.</p>
         <div class="hero-cta" data-reveal>
-          <a class="btn btn-primary" href="baixar/"><svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> Baixar para macOS</a>
+          <a class="btn btn-primary" href="baixar/" data-cta><svg class="ico"><use href="assets/img/icons.svg#i-download"/></svg> <span data-cta-label>Baixar para macOS</span></a>
           <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk" rel="noopener"><svg class="ico ico-fill"><use href="assets/img/icons.svg#i-github"/></svg> Ver o código</a>
         </div>
       </div>

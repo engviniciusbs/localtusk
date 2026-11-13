@@ -1017,12 +1017,52 @@ mod tests {
         out
     }
 
-    /// Teste ponta a ponta: precisa de PHP-FPM, Caddy e MySQL instalados.
+    /// Pasta com as ferramentas dos testes ponta a ponta (Caddy, MySQL 8.4 e PHP 8.3), baixadas pelo
+    /// próprio app uma única vez e reaproveitadas pelos testes. Assim eles não dependem do que a
+    /// máquina tem instalado (Homebrew, pacotes da distribuição).
+    fn tools_cache() -> PathBuf {
+        let cache = std::env::temp_dir().join("localtusk-test-tools");
+        let quiet = |_: InstallProgress| {};
+        let has = |sub: &str| {
+            fs::read_dir(cache.join("bin").join(sub)).map(|mut d| d.next().is_some()).unwrap_or(false)
+        };
+        if !has("tools/caddy") {
+            extras::install(&cache, "caddy", &quiet).expect("instalar o Caddy");
+        }
+        if !has("mysql") {
+            let v = mysql_manager::catalog(&cache).unwrap().into_iter().find(|r| r.series == "8.4" && r.latest).expect("MySQL 8.4");
+            mysql_manager::install(&cache, &v.version, &quiet).expect("instalar o MySQL");
+        }
+        if !has("php") {
+            let v = crate::php_manager::catalog(&cache).unwrap().into_iter().find(|r| r.minor == "8.3" && r.latest).expect("PHP 8.3");
+            crate::php_manager::install(&cache, &v.version, &quiet).expect("instalar o PHP");
+        }
+        cache
+    }
+
+    /// Pasta nova de teste que usa as ferramentas do cache (`parts`: `tools/caddy`, `mysql`, `php`)
+    /// por atalho, sem baixar de novo. O que o teste instalar fora dessas pastas fica só nela.
+    fn seeded_base(name: &str, parts: &[&str]) -> PathBuf {
+        let cache = tools_cache();
+        let base = std::env::temp_dir().join(format!("localtusk-test-{name}-{}", project::now()));
+        for part in parts {
+            let from = cache.join("bin").join(part);
+            let to = base.join("bin").join(part);
+            fs::create_dir_all(to.parent().unwrap()).unwrap();
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&from, &to).unwrap();
+            #[cfg(windows)]
+            std::os::windows::fs::symlink_dir(&from, &to).unwrap();
+        }
+        base
+    }
+
+    /// Teste ponta a ponta: baixa (uma vez) Caddy, MySQL e PHP.
     /// Rode com: `cargo test -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn start_serve_stop() {
-        let base = std::env::temp_dir().join(format!("localtusk-test-{}", project::now()));
+        let base = seeded_base("serve", &["tools/caddy", "mysql", "php"]);
         let http = project::free_port(18000, &Default::default()).unwrap();
         let db = project::free_port(13307, &Default::default()).unwrap();
         let p = Project {
@@ -1050,12 +1090,12 @@ mod tests {
     }
 
     /// O inspetor registra o que o PHP recebeu e respondeu, sem alterar a resposta ao cliente.
-    /// Usa o PHP, o MySQL e o Caddy do sistema. Rode com:
+    /// Usa o Caddy, o MySQL e o PHP baixados pelo app para o teste. Rode com:
     /// `cargo test --lib api_inspector -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn api_inspector_end_to_end() {
-        let base = std::env::temp_dir().join(format!("localtusk-test-api-{}", project::now()));
+        let base = seeded_base("api", &["tools/caddy", "mysql", "php"]);
         let http = project::free_port(18200, &Default::default()).unwrap();
         let db = project::free_port(13500, &Default::default()).unwrap();
         let p = Project {
@@ -1151,7 +1191,7 @@ mod tests {
     #[test]
     #[ignore]
     fn install_and_serve_old_php() {
-        let base = std::env::temp_dir().join(format!("localtusk-test-dl-{}", project::now()));
+        let base = seeded_base("dl", &["tools/caddy", "mysql"]);
 
         let cat = crate::php_manager::catalog(&base).expect("catálogo");
         println!("{} versões no catálogo", cat.len());
@@ -1199,7 +1239,7 @@ mod tests {
     #[test]
     #[ignore]
     fn extras_end_to_end() {
-        let base = std::env::temp_dir().join(format!("localtusk-test-extras-{}", project::now()));
+        let base = seeded_base("extras", &["mysql", "php"]);
         for id in extras::IDS {
             extras::install(&base, id, &|p| {
                 if p.stage != "download" {
@@ -1755,12 +1795,12 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
 
     /// Blueprint de verdade: um projeto com arquivo e dados vira modelo, e um segundo projeto
     /// (outro id e outras portas) nasce com os mesmos arquivos e o mesmo banco.
-    /// Usa o PHP, o MySQL e o Caddy do sistema. Rode com:
+    /// Usa o Caddy, o MySQL e o PHP baixados pelo app para o teste. Rode com:
     /// `cargo test --lib blueprint_end_to_end -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn blueprint_end_to_end() {
-        let base = std::env::temp_dir().join(format!("localtusk-test-bp-{}", project::now()));
+        let base = seeded_base("bp", &["tools/caddy", "mysql", "php"]);
         let mk = |id: &str, http_start: u16, db_start: u16| {
             let http = project::free_port(http_start, &Default::default()).unwrap();
             let db = project::free_port(db_start, &Default::default()).unwrap();
@@ -1880,12 +1920,12 @@ echo 'notas=' . $pdo->query('SELECT COUNT(*) FROM notas')->fetchColumn();
 
     /// HTTPS de verdade: o Caddy emite o certificado da CA local, o PHP enxerga `HTTPS=on` e o
     /// certificado vale para `<id>.localhost` (verificado com o certificado raiz, sem confiar no sistema).
-    /// Usa PHP, MySQL e Caddy já instalados. Rode com:
+    /// Usa o Caddy, o MySQL e o PHP baixados pelo app para o teste. Rode com:
     /// `cargo test --lib https_end_to_end -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn https_end_to_end() {
-        let base = std::env::temp_dir().join(format!("localtusk-test-https-{}", project::now()));
+        let base = seeded_base("https", &["tools/caddy", "mysql", "php"]);
         let http = project::free_port(18400, &Default::default()).unwrap();
         let https = project::free_port(18450, &Default::default()).unwrap();
         let db = project::free_port(13700, &Default::default()).unwrap();
@@ -1901,14 +1941,6 @@ echo 'notas=' . $pdo->query('SELECT COUNT(*) FROM notas')->fetchColumn();
         };
         scaffold(&base, &p).unwrap();
         fs::write(docroot_dir(&base, &p).join("index.php"), "<?php echo 'https=' . ($_SERVER['HTTPS'] ?? 'off');").unwrap();
-        let caddy = extras::caddy_bin(&dirs::home_dir().unwrap().join("LocalTusk")).expect("Caddy instalado");
-        // Reaproveita o Caddy já baixado pelo app: copia para a pasta de teste.
-        let dest = extras::caddy_bin(&base);
-        if dest.is_none() {
-            let target = base.join("bin").join("tools").join("caddy");
-            fs::create_dir_all(&target).unwrap();
-            fs::copy(&caddy, target.join(caddy.file_name().unwrap())).unwrap();
-        }
         let mut running = start(&base, &p).expect("start falhou");
 
         let root = crate::ssl::root_cert(&base);
@@ -1945,7 +1977,7 @@ echo 'notas=' . $pdo->query('SELECT COUNT(*) FROM notas')->fetchColumn();
             println!("sem rede local: teste ignorado");
             return;
         };
-        let base = std::env::temp_dir().join(format!("localtusk-test-lan-{}", project::now()));
+        let base = seeded_base("lan", &["tools/caddy", "mysql", "php"]);
         let http = project::free_port(18500, &Default::default()).unwrap();
         let https = project::free_port(18550, &Default::default()).unwrap();
         let db = project::free_port(13800, &Default::default()).unwrap();
@@ -1961,11 +1993,6 @@ echo 'notas=' . $pdo->query('SELECT COUNT(*) FROM notas')->fetchColumn();
         };
         scaffold(&base, &p).unwrap();
         fs::write(docroot_dir(&base, &p).join("index.php"), "<?php echo 'ola ' . $_SERVER['HTTP_HOST'];").unwrap();
-        let caddy = extras::caddy_bin(&dirs::home_dir().unwrap().join("LocalTusk")).expect("Caddy instalado");
-        let target = base.join("bin").join("tools").join("caddy");
-        fs::create_dir_all(&target).unwrap();
-        fs::copy(&caddy, target.join(caddy.file_name().unwrap())).unwrap();
-
         let curl = |extra: &[&str], url: &str| {
             Command::new("curl").args(["-s", "--max-time", "10"]).args(extra).arg(url).output().unwrap()
         };

@@ -387,8 +387,16 @@ code { overflow-wrap: anywhere; }
 .status.ok { background: rgba(62, 207, 142, 0.14); color: var(--green); }
 .status.soon { background: rgba(245, 184, 74, 0.14); color: var(--amber); }
 .os-card ul { display: grid; gap: 6px; color: var(--muted); font-size: 15px; }
-.os-card ul li { display: flex; gap: 8px; } .os-card ul li::before { content: "·"; color: var(--accent); }
+.os-card ul li { position: relative; padding-left: 16px; } .os-card ul li::before { content: "·"; color: var(--accent); position: absolute; left: 4px; }
 .os-card .btn { margin-top: auto; }
+.dl-actions { margin-top: auto; display: grid; grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.dl-actions .btn { margin-top: 0; min-width: 0; max-width: 100%; justify-content: center; }
+.dl-actions .btn small { font-family: var(--font-mono); font-size: 11.5px; opacity: 0.75; }
+.dl-group { display: grid; gap: 6px; }
+.dl-group > small { color: var(--muted); font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.06em; text-transform: uppercase; }
+.dl-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.dl-note { color: var(--muted); font-size: 13.5px; }
+.btn.pending { opacity: 0.7; }
 .assets { display: grid; gap: 10px; margin-top: 4px; }
 .asset { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; background: var(--surface-2); font-size: 14.5px; transition: border-color 0.2s, background 0.2s; }
 .asset:hover { border-color: var(--accent); background: var(--surface-3); }

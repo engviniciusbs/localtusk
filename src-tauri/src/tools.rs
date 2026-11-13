@@ -35,7 +35,7 @@ pub fn find(name: &str, base: &Path) -> Option<PathBuf> {
 }
 
 /// Procura um executável só nos locais do sistema (ignora as pastas do app).
-fn find_in_system(name: &str) -> Option<PathBuf> {
+pub fn find_in_system(name: &str) -> Option<PathBuf> {
     search_dirs(Path::new(""))
         .into_iter()
         .filter(|d| d.is_absolute())

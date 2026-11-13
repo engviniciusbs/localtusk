@@ -1,6 +1,6 @@
 //! Gerenciador de versões do PostgreSQL.
 //!
-//! Baixa os binários prontos do projeto theseus-rs/postgresql-binaries (macOS, com `psql`,
+//! Baixa os binários prontos do projeto theseus-rs/postgresql-binaries (macOS e Linux, com `psql`,
 //! `pg_dump` e o servidor completo) e guarda só o necessário em
 //! `~/LocalTusk/bin/postgres/<versão>/` (`bin/`, `lib/`, `share/`).
 //!
@@ -66,6 +66,8 @@ fn arch() -> Option<(&'static str, &'static str)> {
     match (std::env::consts::OS, std::env::consts::ARCH) {
         ("macos", "aarch64") => Some(("arm64", "aarch64-apple-darwin")),
         ("macos", "x86_64") => Some(("x86_64", "x86_64-apple-darwin")),
+        ("linux", "aarch64") => Some(("linux-aarch64", "aarch64-unknown-linux-gnu")),
+        ("linux", "x86_64") => Some(("linux-x86_64", "x86_64-unknown-linux-gnu")),
         _ => None,
     }
 }
@@ -108,7 +110,7 @@ pub struct PostgresRelease {
 
 /// Versões disponíveis para download nesta máquina, da mais nova para a mais antiga.
 pub fn catalog(base: &Path) -> Result<Vec<PostgresRelease>, String> {
-    let (arch, _) = arch().ok_or("O download do PostgreSQL só está disponível para macOS por enquanto.")?;
+    let (arch, _) = arch().ok_or("O download do PostgreSQL só está disponível para macOS e Linux por enquanto.")?;
     let installed = managed_versions(base);
     let mut versions: Vec<(String, u64)> = manifest()
         .into_iter()
@@ -138,7 +140,7 @@ fn keep(rel: &Path) -> bool {
         Some("lib") => {
             comps.len() == 2 && {
                 let n = comps[1].as_str();
-                n.ends_with(".dylib") && !n.starts_with("libLLVM") && !n.contains("llvmjit") && !n.contains("plpython")
+                (n.ends_with(".dylib") || n.contains(".so")) && !n.starts_with("libLLVM") && !n.contains("llvmjit") && !n.contains("plpython")
             }
         }
         Some("share") => comps.get(1).map(String::as_str) != Some("doc"),
@@ -151,7 +153,7 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
     if !valid_version(version) {
         return Err("versão inválida".into());
     }
-    let (arch, triple) = arch().ok_or("O download do PostgreSQL só está disponível para macOS por enquanto.")?;
+    let (arch, triple) = arch().ok_or("O download do PostgreSQL só está disponível para macOS e Linux por enquanto.")?;
     let final_dir = install_dir(base, version);
     if final_dir.join("bin").join("postgres").is_file() {
         return Ok(());
@@ -166,7 +168,7 @@ pub fn install(base: &Path, version: &str, progress: &dyn Fn(InstallProgress)) -
         .into_iter()
         .find(|v| v.version == version)
         .and_then(|v| v.builds.get(arch).cloned())
-        .ok_or_else(|| format!("PostgreSQL {version} não está disponível para este Mac."))?;
+        .ok_or_else(|| format!("PostgreSQL {version} não está disponível para este sistema."))?;
     let url = format!("{RELEASES}/{version}/postgresql-{version}-{triple}.tar.gz");
 
     let root = pg_root(base);

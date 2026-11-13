@@ -1,6 +1,6 @@
 /* LocalTusk — site.
-   - Sem rastreamento e sem requisições a terceiros, exceto a página de download, que consulta
-     a API pública do GitHub para listar a versão mais recente.
+   - Sem rastreamento e sem requisições a terceiros, exceto o botão "Baixar" (página inicial e
+     página de download), que consulta a API pública do GitHub para achar o arquivo da versão mais recente.
    - Movimento só com transform/opacity. Com "reduzir movimento" ligado, nada anima. */
 (() => {
   "use strict";
@@ -82,25 +82,135 @@
   }
 
   /* ------------------------------------------------------------ Download */
-  const OS_RULES = [
-    { os: "macos", test: (n) => /\.(dmg|app\.tar\.gz)$/i.test(n) },
-    { os: "windows", test: (n) => /\.(msi|exe)$/i.test(n) },
-    { os: "linux", test: (n) => /\.(appimage|deb|rpm)$/i.test(n) },
-  ];
-  const fmtSize = (b) => (b > 1e6 ? (b / 1e6).toFixed(1) + " MB" : Math.max(1, Math.round(b / 1e3)) + " KB");
+  const RELEASES_URL = `https://github.com/${REPO}/releases`;
+  const OS_NAME = { macos: "macOS", windows: "Windows", linux: "Linux" };
+  const ARCH_NAME = { macos: { arm64: "Apple Silicon", x64: "Intel" }, linux: { arm64: "ARM64", x64: "x86_64" } };
+  const fmtSize = (b) => (b > 1e6 ? (b / 1e6).toFixed(1).replace(".", ",") + " MB" : Math.max(1, Math.round(b / 1e3)) + " KB");
 
+  /** Sistema do visitante: "macos", "linux", "windows" ou "" (celular, tablet ou desconhecido). */
   function detectOS() {
-    const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || navigator.userAgent || "";
-    if (/mac/i.test(p)) return "macos";
+    const ua = navigator.userAgent || "";
+    if (/android|iphone|ipad|ipod|cros/i.test(ua)) return "";
+    const p = (navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || ua;
+    // iPadOS se apresenta como Mac, mas tem tela de toque.
+    if (/mac/i.test(p)) return navigator.maxTouchPoints > 1 ? "" : "macos";
     if (/win/i.test(p)) return "windows";
     if (/linux|x11/i.test(p)) return "linux";
     return "";
   }
 
+  /**
+   * Arquitetura do visitante: { arch: "arm64" | "x64", sure: boolean }.
+   * O Chrome e o Edge informam o chip; o Safari e o Firefox escondem, então no Mac o chute é
+   * Apple Silicon (a maioria) e `sure` fica falso para a página oferecer a versão Intel.
+   */
+  async function detectArch(os) {
+    try {
+      const uad = navigator.userAgentData;
+      if (uad && uad.getHighEntropyValues) {
+        const h = await uad.getHighEntropyValues(["architecture"]);
+        if (h.architecture) return { arch: /arm/i.test(h.architecture) ? "arm64" : "x64", sure: true };
+      }
+    } catch { /* segue para os outros sinais */ }
+    const hint = `${navigator.userAgent || ""} ${navigator.platform || ""}`;
+    if (os === "linux") return { arch: /aarch64|arm64|armv8/i.test(hint) ? "arm64" : "x64", sure: true };
+    if (os === "macos") {
+      try {
+        const gl = document.createElement("canvas").getContext("webgl");
+        const ext = gl && gl.getExtension("WEBGL_debug_renderer_info");
+        const gpu = ext ? String(gl.getParameter(ext.UNMASKED_RENDERER_WEBGL)) : "";
+        if (/apple m\d/i.test(gpu)) return { arch: "arm64", sure: true };
+        if (/intel|amd|radeon|nvidia/i.test(gpu)) return { arch: "x64", sure: true };
+      } catch { /* sem WebGL */ }
+      return { arch: "arm64", sure: false };
+    }
+    return { arch: "x64", sure: false };
+  }
+
+  /** Reconhece o arquivo da release pelo nome: { os, arch, kind } ou null. */
+  function classify(name) {
+    const n = name.toLowerCase();
+    const arch = /aarch64|arm64/.test(n) ? "arm64" : /x86_64|x64|amd64/.test(n) ? "x64" : "";
+    if (n.endsWith(".dmg")) return { os: "macos", arch, kind: "dmg" };
+    if (n.endsWith(".appimage")) return { os: "linux", arch, kind: "appimage" };
+    if (n.endsWith(".deb")) return { os: "linux", arch, kind: "deb" };
+    if (n.endsWith(".rpm")) return { os: "linux", arch, kind: "rpm" };
+    if (/\.(msi|exe)$/.test(n)) return { os: "windows", arch, kind: "installer" };
+    return null;
+  }
+
+  /** Última release publicada, com os arquivos já classificados. `null` se ainda não houver nenhuma. */
+  async function loadRelease() {
+    const KEY = "localtusk-release";
+    try {
+      const cached = JSON.parse(sessionStorage.getItem(KEY) || "null");
+      if (cached && Date.now() - cached.at < 10 * 60 * 1000) return cached.release;
+    } catch { /* cache ilegível: consulta de novo */ }
+    // Lista com 1 item: devolve [] (200) quando ainda não há versão publicada, em vez de um 404.
+    const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=1`, { headers: { Accept: "application/vnd.github+json" } });
+    if (!res.ok) throw new Error(String(res.status));
+    const rel = (await res.json()).find((r) => !r.draft);
+    const release = rel
+      ? {
+          tag: rel.tag_name || rel.name,
+          publishedAt: rel.published_at,
+          url: rel.html_url,
+          assets: (rel.assets || [])
+            .filter((a) => !/\.(sig|sha256|txt|json)$/i.test(a.name))
+            .map((a) => ({ name: a.name, url: a.browser_download_url, size: a.size, info: classify(a.name) })),
+        }
+      : null;
+    try { sessionStorage.setItem(KEY, JSON.stringify({ at: Date.now(), release })); } catch { /* armazenamento bloqueado */ }
+    return release;
+  }
+
+  /** O arquivo recomendado para este visitante (dmg no Mac, AppImage no Linux). */
+  function pickAsset(release, os, arch) {
+    const kind = os === "macos" ? "dmg" : os === "linux" ? "appimage" : "";
+    if (!release || !kind) return null;
+    return release.assets.find((a) => a.info && a.info.os === os && a.info.kind === kind && a.info.arch === arch) || null;
+  }
+
+  /** Botões "Baixar" da página inicial: texto pelo sistema e, havendo release, link direto. */
+  async function initCtas() {
+    const ctas = $$("[data-cta]");
+    if (!ctas.length) return;
+    const os = detectOS();
+    const supported = os === "macos" || os === "linux";
+    ctas.forEach((el) => {
+      const label = $("[data-cta-label]", el);
+      if (label) label.textContent = supported ? `Baixar para ${OS_NAME[os]}` : "Baixar o LocalTusk";
+    });
+    const meta = $$("[data-cta-meta]");
+    if (!supported) return;
+    try {
+      const [release, { arch }] = await Promise.all([loadRelease(), detectArch(os)]);
+      const asset = pickAsset(release, os, arch);
+      if (!asset) return; // sem instalador publicado: o botão continua levando à página de download
+      ctas.forEach((el) => {
+        el.href = asset.url;
+        el.rel = "noopener";
+      });
+      meta.forEach((el) => {
+        el.textContent = "";
+        el.append(`${release.tag} · ${OS_NAME[os]} ${ARCH_NAME[os][arch]} · ${fmtSize(asset.size)} · `);
+        const more = document.createElement("a");
+        more.href = el.dataset.moreHref || "baixar/";
+        more.textContent = "outros sistemas";
+        el.append(more);
+      });
+    } catch {
+      /* sem rede ou limite do GitHub: o botão segue para a página de download */
+    }
+  }
+
+  /** Página de download: destaca o sistema do visitante e liga cada botão ao arquivo da release. */
   async function initDownload() {
     const page = $("[data-download]");
     if (!page) return;
     const os = detectOS();
+    const { arch, sure } = os ? await detectArch(os) : { arch: "", sure: false };
+
     $$(".os-card").forEach((c) => {
       if (c.dataset.os === os) {
         c.classList.add("rec");
@@ -108,6 +218,16 @@
         if (tag) tag.hidden = false;
       }
     });
+    // Dentro do cartão do sistema, o arquivo da arquitetura do visitante vira o botão principal.
+    $$(".os-card.rec [data-asset]").forEach((a) => {
+      const [, assetArch, kind] = a.dataset.asset.split("-");
+      const primary = assetArch === arch && (kind === "dmg" || kind === "appimage");
+      a.classList.toggle("btn-primary", primary);
+      a.classList.toggle("btn-ghost", !primary);
+    });
+    $$(".os-card.rec .dl-group").forEach((g) => { if (g.dataset.arch === arch) g.parentElement.prepend(g); });
+    const note = $("[data-arch-note]");
+    if (note) note.hidden = !(os === "macos" && !sure);
 
     const box = $("#release");
     if (!box) return;
@@ -115,30 +235,42 @@
     const text = $("[data-release-text]", box);
     const list = $("[data-release-assets]", box);
     try {
-      // Lista com 1 item: devolve [] (200) quando ainda não há versão publicada, em vez de um 404.
-      const res = await fetch(`https://api.github.com/repos/${REPO}/releases?per_page=1`, { headers: { Accept: "application/vnd.github+json" } });
-      if (!res.ok) throw new Error(String(res.status));
-      const rel = (await res.json()).find((r) => !r.draft);
+      const rel = await loadRelease();
       if (!rel) return; // ainda sem versão publicada: mantém o texto padrão
-      const assets = (rel.assets || []).filter((a) => !/\.(sig|sha256|txt|json)$/i.test(a.name));
-      title.textContent = `Versão ${rel.tag_name || rel.name}`;
-      const when = rel.published_at ? new Date(rel.published_at).toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" }) : "";
+      const assets = rel.assets;
+      title.textContent = `Versão ${rel.tag}`;
+      const when = rel.publishedAt ? new Date(rel.publishedAt).toLocaleDateString("pt-BR", { day: "numeric", month: "long", year: "numeric" }) : "";
       text.textContent = assets.length
-        ? `Publicada em ${when}. Escolha o arquivo do seu sistema.`
+        ? `Publicada em ${when}. Os botões acima já apontam para esta versão.`
         : `Publicada em ${when}, mas ainda sem instaladores anexados. Veja a página da versão no GitHub.`;
+
+      // Cada botão com data-asset="<sistema>-<arquitetura>-<formato>" vai direto ao arquivo.
+      $$("[data-asset]").forEach((btn) => {
+        const [bos, barch, bkind] = btn.dataset.asset.split("-");
+        const hit = assets.find((a) => a.info && a.info.os === bos && a.info.arch === barch && a.info.kind === bkind);
+        if (!hit) {
+          btn.classList.add("pending");
+          btn.title = "Este arquivo ainda não foi publicado nesta versão";
+          return;
+        }
+        btn.href = hit.url;
+        const size = $("[data-size]", btn);
+        if (size) size.textContent = fmtSize(hit.size);
+      });
+
       assets.forEach((a) => {
-        const rule = OS_RULES.find((r) => r.test(a.name));
         const link = document.createElement("a");
         link.className = "asset";
-        link.href = a.browser_download_url;
+        link.href = a.url;
         link.rel = "noopener";
         const name = document.createElement("span");
         name.textContent = a.name;
         const meta = document.createElement("small");
-        meta.textContent = `${rule ? { macos: "macOS", windows: "Windows", linux: "Linux" }[rule.os] + " · " : ""}${fmtSize(a.size)}`;
+        const i = a.info;
+        meta.textContent = `${i ? OS_NAME[i.os] + " · " : ""}${fmtSize(a.size)}`;
         link.append(name, meta);
         list.append(link);
-        if (rule && rule.os === os) link.style.borderColor = "var(--accent)";
+        if (i && i.os === os) link.style.borderColor = "var(--accent)";
       });
       list.hidden = !assets.length;
     } catch {
@@ -254,6 +386,7 @@
   initHeader();
   initTabs();
   initCopy();
+  initCtas();
   initDownload();
   initMotion();
 

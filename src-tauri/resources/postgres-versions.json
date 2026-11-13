@@ -12,6 +12,14 @@
     "x86_64": {
      "bytes": 92187545,
      "sha256": "9cd649259d6bf4af60a235e772c83853df215b63f4c1967c2eed7f9376aefb89"
+    },
+    "linux-aarch64": {
+     "bytes": 39931153,
+     "sha256": "6fcf45163aa044fe58597885b0e27c4b1614c53ad088d4d0ebbbfdf5df510eaf"
+    },
+    "linux-x86_64": {
+     "bytes": 40530262,
+     "sha256": "53ca01952cb581145e4fb16b6b3b675da345a82879f350707b9f65863a0642f4"
     }
    }
   },
@@ -26,6 +34,14 @@
     "x86_64": {
      "bytes": 93377231,
      "sha256": "34ba0eca0f15776b4ab9a07b2decc6fb0b1910a57870ad7d7dacb7399b43c9bd"
+    },
+    "linux-aarch64": {
+     "bytes": 39514574,
+     "sha256": "9b3ca376cbdecb297711f9b09bfe834ae0f7c231042de58b7cb4bb2c0a526301"
+    },
+    "linux-x86_64": {
+     "bytes": 40118562,
+     "sha256": "af316b6e42266ec0a153bdc9194e0b1b5f12c9ce4f0b13d9a96dfca77d9aaecc"
     }
    }
   },
@@ -40,6 +56,14 @@
     "x86_64": {
      "bytes": 92163354,
      "sha256": "6bcc3f98c76fdb4b52bf4e59781308ea996058941566579a0961b3a25626b6bb"
+    },
+    "linux-aarch64": {
+     "bytes": 38844516,
+     "sha256": "05f13472e1da9df11e801fc7b1ad92408ba02fb6af7f7cbaffd346934a5e5b0a"
+    },
+    "linux-x86_64": {
+     "bytes": 39431025,
+     "sha256": "f668fbc685cdcb71d6a82f57035bed7d97b059e2d8a1d3adf317ec36c5e861d2"
     }
    }
   },
@@ -54,6 +78,14 @@
     "x86_64": {
      "bytes": 37556452,
      "sha256": "271f3cd94dedd576a6c4a48bb8da02382cffcca3f8112984facf79596aaaf68a"
+    },
+    "linux-aarch64": {
+     "bytes": 38283026,
+     "sha256": "e53127a4c665c2a9e3f4c4d32cb01cb23d393706e2a86b7151d570e9d55d17cb"
+    },
+    "linux-x86_64": {
+     "bytes": 38821617,
+     "sha256": "2eec5422941fc12339d86c18542753a6b3ca6822149b18d036a05717d5f58e26"
     }
    }
   },
@@ -68,6 +100,14 @@
     "x86_64": {
      "bytes": 27931984,
      "sha256": "ddb521888f8a3868d4ec48b23d07f936acec1a7109d891ef10ed9b19a8742116"
+    },
+    "linux-aarch64": {
+     "bytes": 29659140,
+     "sha256": "c18314d8ff6f44b7b2f2558bd4faec70026d396e04722e8b97f9178ace0ad45c"
+    },
+    "linux-x86_64": {
+     "bytes": 30082078,
+     "sha256": "1eec1ed02ee719ba18ebcfbcb536eea76fa543c0f21b1e5cc4c9b089bd7e44bb"
     }
    }
   }

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Baixar o LocalTusk para macOS — grátis e open source</title>
-  <meta name="description" content="Baixe o LocalTusk, o ambiente PHP local sem Docker para macOS. Veja a versão mais recente, os requisitos e como compilar a partir do código-fonte.">
+  <title>Baixar o LocalTusk para macOS e Linux — grátis e open source</title>
+  <meta name="description" content="Baixe o LocalTusk, o ambiente PHP local sem Docker, para macOS (Apple Silicon e Intel) e Linux (AppImage, deb e rpm). Veja a versão mais recente, os requisitos e como compilar a partir do código-fonte.">
   <link rel="canonical" href="https://jhonatanmp.github.io/localtusk/baixar/">
   <meta name="robots" content="index, follow, max-image-preview:large">
   <meta name="theme-color" content="#0d0e15">
@@ -12,7 +12,7 @@
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="LocalTusk">
   <meta property="og:locale" content="pt_BR">
-  <meta property="og:title" content="Baixar o LocalTusk para macOS">
+  <meta property="og:title" content="Baixar o LocalTusk para macOS e Linux">
   <meta property="og:description" content="Ambiente PHP local sem Docker, gratuito e open source. Versão mais recente e instruções de instalação.">
   <meta property="og:url" content="https://jhonatanmp.github.io/localtusk/baixar/">
   <meta property="og:image" content="https://jhonatanmp.github.io/localtusk/assets/img/og.png">
@@ -70,7 +70,7 @@
         <nav class="crumbs" aria-label="Você está em"><a href="../">Início</a><span aria-hidden="true">/</span><span>Baixar</span></nav>
         <span class="eyebrow">Download</span>
         <h1>Baixar o LocalTusk</h1>
-        <p class="lead">Gratuito, sem conta e sem cadastro. Escolha o seu sistema e comece em poucos minutos.</p>
+        <p class="lead">Gratuito, sem conta e sem cadastro. O site reconhece o seu sistema e destaca o arquivo certo; se preferir outro, é só escolher abaixo.</p>
       </div>
     </section>
 
@@ -79,33 +79,56 @@
         <div class="os-grid">
           <article class="card os-card" data-os="macos">
             <h3><svg class="ico"><use href="../assets/img/icons.svg#i-monitor"/></svg> macOS <span class="status ok">Principal</span> <span class="status ok you" hidden>Seu sistema</span></h3>
-            <p class="muted">É o sistema em que o LocalTusk é feito e usado hoje.</p>
+            <p class="muted">É o sistema em que o LocalTusk é feito e usado todo dia.</p>
             <ul>
-              <li>Apple Silicon (testado) e Intel</li>
+              <li>Apple Silicon (testado todo dia) e Intel</li>
               <li>Sem Homebrew e sem Docker</li>
-              <li>PHP, MySQL e ferramentas baixados pelo app</li>
+              <li>PHP, bancos e ferramentas baixados pelo app</li>
             </ul>
-            <a class="btn btn-primary" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener"><svg class="ico"><use href="../assets/img/icons.svg#i-download"/></svg> Ver versões no GitHub</a>
+            <div class="dl-actions">
+              <a class="btn btn-primary" data-asset="macos-arm64-dmg" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener"><svg class="ico"><use href="../assets/img/icons.svg#i-download"/></svg> Apple Silicon (.dmg) <small data-size></small></a>
+              <a class="btn btn-ghost" data-asset="macos-x64-dmg" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener"><svg class="ico"><use href="../assets/img/icons.svg#i-download"/></svg> Intel (.dmg) <small data-size></small></a>
+              <p class="dl-note" data-arch-note hidden>Não consegui identificar o chip do seu Mac. Se ele for Intel, use o botão Intel.</p>
+            </div>
+          </article>
+
+          <article class="card os-card" data-os="linux">
+            <h3><svg class="ico"><use href="../assets/img/icons.svg#i-server"/></svg> Linux <span class="status soon">Beta</span> <span class="status ok you" hidden>Seu sistema</span></h3>
+            <p class="muted">A pilha completa (PHP, MySQL, PostgreSQL, Redis, WordPress, HTTPS e rede) passou nos nossos testes no Ubuntu 24.04 (ARM64), mas ainda tem muito menos horas de uso que o macOS.</p>
+            <ul>
+              <li>x86_64 e ARM64, com WebKitGTK 4.1 (o pacote <code>libwebkit2gtk-4.1</code> da sua distribuição)</li>
+              <li>MySQL pede <code class="mono">libaio</code> e <code class="mono">libnuma</code>; o Redis, <code class="mono">make</code> e <code class="mono">gcc</code></li>
+            </ul>
+            <div class="dl-actions">
+              <div class="dl-group" data-arch="x64">
+                <small>x86_64 (Intel e AMD)</small>
+                <div class="dl-row">
+                  <a class="btn btn-primary" data-asset="linux-x64-appimage" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener"><svg class="ico"><use href="../assets/img/icons.svg#i-download"/></svg> AppImage <small data-size></small></a>
+                  <a class="btn btn-ghost" data-asset="linux-x64-deb" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener">.deb <small data-size></small></a>
+                  <a class="btn btn-ghost" data-asset="linux-x64-rpm" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener">.rpm <small data-size></small></a>
+                </div>
+              </div>
+              <div class="dl-group" data-arch="arm64">
+                <small>ARM64 (aarch64)</small>
+                <div class="dl-row">
+                  <a class="btn btn-ghost" data-asset="linux-arm64-appimage" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener"><svg class="ico"><use href="../assets/img/icons.svg#i-download"/></svg> AppImage <small data-size></small></a>
+                  <a class="btn btn-ghost" data-asset="linux-arm64-deb" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener">.deb <small data-size></small></a>
+                  <a class="btn btn-ghost" data-asset="linux-arm64-rpm" href="https://github.com/jhonatanMP/localtusk/releases" rel="noopener">.rpm <small data-size></small></a>
+                </div>
+              </div>
+            </div>
           </article>
 
           <article class="card os-card" data-os="windows">
             <h3><svg class="ico"><use href="../assets/img/icons.svg#i-monitor"/></svg> Windows <span class="status soon">Em breve</span> <span class="status ok you" hidden>Seu sistema</span></h3>
-            <p class="muted">O código já compila e passa nos testes automáticos, mas o uso completo ainda não foi validado.</p>
+            <p class="muted">O código compila e passa nos testes automáticos, mas o app ainda não baixa o MySQL nem o PostgreSQL no Windows.</p>
             <ul>
-              <li>Instalação do MySQL em desenvolvimento</li>
+              <li>Instalação dos bancos em desenvolvimento</li>
               <li>Acompanhe pelo GitHub</li>
             </ul>
-            <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk/issues" rel="noopener">Acompanhar no GitHub <svg class="ico"><use href="../assets/img/icons.svg#i-external"/></svg></a>
-          </article>
-
-          <article class="card os-card" data-os="linux">
-            <h3><svg class="ico"><use href="../assets/img/icons.svg#i-server"/></svg> Linux <span class="status soon">Em breve</span> <span class="status ok you" hidden>Seu sistema</span></h3>
-            <p class="muted">Mesma situação do Windows: compila e passa nos testes, e o uso completo ainda está em desenvolvimento.</p>
-            <ul>
-              <li>Instalação do MySQL em desenvolvimento</li>
-              <li>Acompanhe pelo GitHub</li>
-            </ul>
-            <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk/issues" rel="noopener">Acompanhar no GitHub <svg class="ico"><use href="../assets/img/icons.svg#i-external"/></svg></a>
+            <div class="dl-actions">
+              <a class="btn btn-ghost" href="https://github.com/jhonatanMP/localtusk/issues" rel="noopener">Acompanhar no GitHub <svg class="ico"><use href="../assets/img/icons.svg#i-external"/></svg></a>
+            </div>
           </article>
         </div>
 
@@ -119,8 +142,13 @@
 
     <section class="section" style="padding-top:0">
       <div class="narrow prose">
+        <h2 id="instalar">Instalar</h2>
+        <p><b>macOS:</b> abra o <code>.dmg</code> e arraste o LocalTusk para a pasta Aplicativos. <b>Linux:</b> com o <code>.AppImage</code>, rode <code>chmod +x LocalTusk_*.AppImage</code> e abra o arquivo; com o <code>.deb</code>, <code>sudo apt install ./LocalTusk_*.deb</code>; com o <code>.rpm</code>, <code>sudo dnf install ./LocalTusk-*.rpm</code>.</p>
+
+        <div class="note"><svg class="ico"><use href="../assets/img/icons.svg#i-info"/></svg><div><b>Primeira abertura no macOS.</b> O app ainda não é assinado nem notarizado pela Apple, então o macOS pode bloquear a primeira abertura. Clique com o botão direito no app, escolha <b>Abrir</b> e confirme. Se preferir pelo terminal: <code>xattr -cr /Applications/LocalTusk.app</code>.</div></div>
+
         <h2 id="compilar">Compilar a partir do código-fonte</h2>
-        <p>Você precisa do <a href="https://rustup.rs" rel="noopener">Rust</a>, do <a href="https://nodejs.org" rel="noopener">Node.js</a>, do <a href="https://pnpm.io" rel="noopener">pnpm</a> e das ferramentas de linha de comando do Xcode (<code>xcode-select --install</code>).</p>
+        <p>Você precisa do <a href="https://rustup.rs" rel="noopener">Rust</a>, do <a href="https://nodejs.org" rel="noopener">Node.js</a> e do <a href="https://pnpm.io" rel="noopener">pnpm</a>. No macOS, também das ferramentas de linha de comando do Xcode (<code>xcode-select --install</code>). No Linux, das bibliotecas do Tauri (no Ubuntu: <code>sudo apt install libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev libssl-dev patchelf build-essential</code>).</p>
         <div class="codeblock">
           <pre class="mono" id="build-cmd"><span class="c"># baixar o código</span>
 git clone https://github.com/jhonatanMP/localtusk.git
@@ -128,23 +156,21 @@ cd localtusk
 
 <span class="c"># instalar dependências e gerar o app</span>
 pnpm install
-pnpm tauri build --bundles app</pre>
+pnpm tauri build</pre>
           <button class="copy-btn" type="button" data-copy="build-cmd" aria-label="Copiar comandos"><svg class="ico"><use href="../assets/img/icons.svg#i-copy"/></svg><span>Copiar</span></button>
         </div>
-        <p>O aplicativo fica em <code>src-tauri/target/release/bundle/macos/LocalTusk.app</code>. Arraste para a pasta Aplicativos.</p>
-
-        <div class="note"><svg class="ico"><use href="../assets/img/icons.svg#i-info"/></svg><div><b>Primeira abertura no macOS.</b> O app ainda não é assinado nem notarizado pela Apple, então o macOS pode bloquear a primeira abertura. Clique com o botão direito no app, escolha <b>Abrir</b> e confirme. Se preferir pelo terminal: <code>xattr -cr /Applications/LocalTusk.app</code>.</div></div>
+        <p>Os instaladores ficam em <code>src-tauri/target/release/bundle/</code> (<code>macos/LocalTusk.app</code> e <code>dmg/</code> no macOS; <code>deb/</code>, <code>rpm/</code> e <code>appimage/</code> no Linux).</p>
 
         <h2 id="requisitos">Requisitos</h2>
         <div class="reqs">
-          <div><b>Sistema</b><span>macOS (Apple Silicon ou Intel)</span></div>
-          <div><b>Para usar o app</b><span>Nenhum: ele baixa o que precisa</span></div>
-          <div><b>Internet</b><span>Só para baixar PHP, MySQL e ferramentas</span></div>
-          <div><b>Espaço em disco</b><span>Depende das versões instaladas</span></div>
+          <div><b>Sistema</b><span>macOS recente (Apple Silicon ou Intel) ou Linux (x86_64 ou ARM64) com WebKitGTK 4.1</span></div>
+          <div><b>Para usar o app</b><span>macOS: nada. Linux: <code>libaio</code> e <code>libnuma</code> (MySQL), <code>make</code> e <code>gcc</code> (Redis)</span></div>
+          <div><b>Internet</b><span>Só para baixar PHP, bancos e ferramentas</span></div>
+          <div><b>Espaço em disco</b><span>Depende das versões. O MySQL no Linux ARM64 tem cerca de 800 MB; no x86_64, 80 MB (8.4 em diante)</span></div>
         </div>
 
         <h2 id="desinstalar">Desinstalar</h2>
-        <p>Feche o LocalTusk e arraste o app para a Lixeira. Se quiser apagar também os seus projetos, bancos e backups, remova a pasta <code>~/LocalTusk</code>. O app não espalha arquivos por outros lugares do sistema.</p>
+        <p>Feche o LocalTusk e remova o app (no macOS, arraste para a Lixeira; no Linux, apague o AppImage ou use <code>sudo apt remove localtusk</code> / <code>sudo dnf remove localtusk</code>). Se quiser apagar também os seus projetos, bancos e backups, remova a pasta <code>~/LocalTusk</code>. O app não espalha arquivos por outros lugares do sistema.</p>
 
         <h2 id="licenca">Licença</h2>
         <p>O LocalTusk é distribuído sob a <a href="../licenca/">licença MIT</a>. Veja também a <a href="../privacidade/">política de privacidade</a>.</p>
