@@ -3,10 +3,10 @@
 import { mockIPC } from "@tauri-apps/api/mocks";
 
 const projects = [
-  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", httpUrl: "http://loja-virtual.localhost:8000", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true, dbEngine: "mysql", redis: false, redisPort: 0 },
-  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", httpUrl: "http://blog-wp.localhost:8001", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true, dbEngine: "mysql", redis: false, redisPort: 0 },
-  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", httpUrl: "http://api-legada.localhost:8002", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false, dbEngine: "mysql", redis: false, redisPort: 0 },
-  { id: "api-pg", name: "API PostgreSQL", docroot: "public", phpVersion: "8.3.32", dbEngine: "postgres", dbVersion: "17.12.0", dbInitialized: true, httpPort: 8003, dbPort: 5433, dbName: "api_pg", dbUser: "root", dbPassword: "root", url: "http://api-pg.localhost:8003", httpUrl: "http://api-pg.localhost:8003", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-pg", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true, redis: true, redisPort: 6380 },
+  { id: "loja-virtual", name: "Loja Virtual", docroot: "public", phpVersion: "8.3.32", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8000, dbPort: 3307, dbName: "loja_virtual", dbUser: "root", dbPassword: "root", url: "http://loja-virtual.localhost:8000", httpUrl: "http://loja-virtual.localhost:8000", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/loja-virtual", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true, dbEngine: "mysql", redis: false, redisPort: 0, autoLogin: false, autoLoginUser: "" },
+  { id: "blog-wp", name: "Blog WordPress", docroot: "", phpVersion: "8.4.9", dbVersion: "8.4.13", dbInitialized: true, httpPort: 8001, dbPort: 3308, dbName: "blog_wp", dbUser: "root", dbPassword: "root", url: "http://blog-wp.localhost:8001", httpUrl: "http://blog-wp.localhost:8001", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/blog-wp", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: true, docrootInUse: true, dbEngine: "mysql", redis: false, redisPort: 0, autoLogin: false, autoLoginUser: "" },
+  { id: "api-legada", name: "API Legada", docroot: "", phpVersion: "8.1.33", dbVersion: "", dbInitialized: false, httpPort: 8002, dbPort: 3309, dbName: "api_legada", dbUser: "root", dbPassword: "root", url: "http://api-legada.localhost:8002", httpUrl: "http://api-legada.localhost:8002", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-legada", running: false, busy: false, hasAdminneo: false, hasMailpit: false, hasWordpress: false, docrootInUse: false, dbEngine: "mysql", redis: false, redisPort: 0, autoLogin: false, autoLoginUser: "" },
+  { id: "api-pg", name: "API PostgreSQL", docroot: "public", phpVersion: "8.3.32", dbEngine: "postgres", dbVersion: "17.12.0", dbInitialized: true, httpPort: 8003, dbPort: 5433, dbName: "api_pg", dbUser: "root", dbPassword: "root", url: "http://api-pg.localhost:8003", httpUrl: "http://api-pg.localhost:8003", https: false, httpsPort: 0, lan: false, lanUrls: [] as string[], path: "/Users/dev/LocalTusk/projects/api-pg", running: true, busy: false, hasAdminneo: true, hasMailpit: true, hasWordpress: false, docrootInUse: true, redis: true, redisPort: 6380, autoLogin: false, autoLoginUser: "" },
 ];
 
 let sslTrusted = false;
@@ -184,6 +184,14 @@ export function installDevMock() {
           p.lanUrls = p.lan ? lanUrlsFor(p) : [];
           return later(p);
         }
+        case "set_auto_login": {
+          const p = projects.find((x) => x.id === a.id)!;
+          p.autoLogin = a.enabled as boolean;
+          p.autoLoginUser = a.user as string;
+          return later(p);
+        }
+        case "list_wp_admins": return later(["admin", "editor-chefe"]);
+        case "open_wp_admin": return null;
         case "set_lan": {
           const p = projects.find((x) => x.id === a.id)!;
           p.lan = a.enabled as boolean;
