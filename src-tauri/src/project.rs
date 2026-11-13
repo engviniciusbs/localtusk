@@ -45,6 +45,12 @@ pub struct Project {
     /// Porta do Redis. 0 = ainda não reservada.
     #[serde(default)]
     pub redis_port: u16,
+    /// O botão do wp-admin entra direto, sem pedir senha (só WordPress).
+    #[serde(default)]
+    pub auto_login: bool,
+    /// Administrador usado pelo login automático. Vazio = ainda não escolhido.
+    #[serde(default)]
+    pub auto_login_user: String,
 }
 
 pub const ENGINE_MYSQL: &str = "mysql";
@@ -325,6 +331,14 @@ mod tests {
         let list: Vec<Project> = serde_json::from_str(old).unwrap();
         assert!(!list[0].https && !list[0].lan && list[0].https_port == 0);
         assert_eq!(site_url(&list[0]), "http://loja.localhost:8000");
+    }
+
+    #[test]
+    fn projeto_antigo_vem_sem_login_automatico() {
+        let old = r#"{"id":"loja","name":"Loja","docroot":"","phpVersion":"","httpPort":8000,"dbPort":3307,"dbName":"loja","createdAt":1}"#;
+        let p: Project = serde_json::from_str(old).unwrap();
+        assert!(!p.auto_login);
+        assert_eq!(p.auto_login_user, "");
     }
 
     #[test]

@@ -95,6 +95,8 @@ impl AppState {
             has_mailpit: alive && info.mail_ui_port.is_some(),
             has_wordpress: wp::is_wordpress(&self.base, p),
             docroot_in_use: wp::docroot_in_use(&self.base, p),
+            auto_login: p.auto_login,
+            auto_login_user: p.auto_login_user.clone(),
         }
     }
 
@@ -170,6 +172,9 @@ pub struct ProjectView {
     has_wordpress: bool,
     /// A pasta pública tem arquivos além do `index.php` de exemplo.
     docroot_in_use: bool,
+    /// Login automático no wp-admin ligado, e o administrador escolhido.
+    auto_login: bool,
+    auto_login_user: String,
 }
 
 async fn blocking<T: Send + 'static>(
@@ -493,6 +498,102 @@ pub fn open_site(
     app.opener()
         .open_url(format!("{}{path}", project::site_url(&p)), None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+/// Confere se o administrador salvo ainda está na lista de administradores do site.
+fn resolve_admin(saved: &str, admins: &[String]) -> Result<String, String> {
+    if admins.iter().any(|a| a == saved) {
+        Ok(saved.to_string())
+    } else {
+        Err(format!(
+            "O usuário {saved} não é mais administrador deste site. Escolha outro no login automático."
+        ))
+    }
+}
+
+/// Liga/desliga o login automático e escolhe o administrador. Não reinicia o projeto.
+#[tauri::command]
+pub async fn set_auto_login(
+    state: State<'_, AppState>,
+    id: String,
+    enabled: bool,
+    user: String,
+) -> Result<ProjectView, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let p = {
+            let mut projects = state.projects.lock().unwrap();
+            let p = projects
+                .iter_mut()
+                .find(|p| p.id == id)
+                .ok_or("projeto não encontrado")?;
+            p.auto_login = enabled;
+            p.auto_login_user = user;
+            let p = p.clone();
+            project::save(&state.base, &projects)?;
+            p
+        };
+        let running = state.running.lock().unwrap().contains_key(&id);
+        if wp::is_wordpress(&state.base, &p) {
+            if enabled {
+                if running {
+                    wp::install_login_plugin(&state.base, &p)?;
+                }
+            } else {
+                // Falha ao remover não impede de salvar.
+                let _ = wp::remove_login_plugin(&state.base, &p);
+            }
+        }
+        Ok(state.view(&p))
+    })
+    .await
+}
+
+/// Logins dos administradores do WordPress do projeto (precisa estar rodando).
+#[tauri::command]
+pub async fn list_wp_admins(state: State<'_, AppState>, id: String) -> Result<Vec<String>, String> {
+    let state = state.inner().clone();
+    blocking(move || {
+        let p = state.find(&id)?;
+        if !state.running.lock().unwrap().contains_key(&id) {
+            return Err("Inicie o projeto para listar os usuários.".into());
+        }
+        wp::admin_users(&state.base, &p)
+    })
+    .await
+}
+
+/// Abre o wp-admin. Com login automático, entra direto; se algo falhar, abre a tela de
+/// login normal e devolve o aviso para o app mostrar.
+#[tauri::command]
+pub async fn open_wp_admin(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Option<String>, String> {
+    let state = state.inner().clone();
+    let p = state.find(&id)?;
+    let admin_url = format!("{}/wp-admin/", project::site_url(&p));
+    let (url, warning) = blocking(move || {
+        if !p.auto_login || !wp::is_wordpress(&state.base, &p) {
+            return Ok((format!("{}/wp-admin/", project::site_url(&p)), None));
+        }
+        let attempt = (|| {
+            let admins = wp::admin_users(&state.base, &p)?;
+            let user = resolve_admin(&p.auto_login_user, &admins)?;
+            wp::install_login_plugin(&state.base, &p)?;
+            let token = wp::create_login_token(&state.base, &p, &user)?;
+            Ok::<String, String>(format!("{}/wp-login.php?{}={token}", project::site_url(&p), wp::LOGIN_PARAM))
+        })();
+        Ok(match attempt {
+            Ok(url) => (url, None),
+            Err(msg) => (format!("{}/wp-admin/", project::site_url(&p)), Some(msg)),
+        })
+    })
+    .await
+    .unwrap_or_else(|e| (admin_url, Some(e)));
+    app.opener().open_url(url, None::<&str>).map_err(|e| e.to_string())?;
+    Ok(warning)
 }
 
 #[tauri::command]
@@ -1555,4 +1656,19 @@ pub async fn read_collection_file(path: String) -> Result<String, String> {
 #[tauri::command]
 pub async fn send_request(request: ApiRequest) -> Result<ApiResponse, String> {
     blocking(move || apitools::send(&request)).await
+}
+
+#[cfg(test)]
+mod auto_login_tests {
+    use super::*;
+
+    #[test]
+    fn resolve_admin_aceita_quem_ainda_e_admin() {
+        let admins = vec!["admin".to_string(), "ana".to_string()];
+        assert_eq!(resolve_admin("ana", &admins).unwrap(), "ana");
+        assert_eq!(
+            resolve_admin("bia", &admins).unwrap_err(),
+            "O usuário bia não é mais administrador deste site. Escolha outro no login automático."
+        );
+    }
 }
