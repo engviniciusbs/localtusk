@@ -840,14 +840,22 @@ pub fn install_login_plugin(base: &Path, p: &Project) -> Result<(), String> {
     fs::write(dir.join(LOGIN_PLUGIN_FILE), LOGIN_PLUGIN_PHP).map_err(|e| e.to_string())
 }
 
-/// Apaga o mu-plugin, se existir. Funciona com o projeto parado.
+/// Apaga o mu-plugin, se existir, da pasta que o WordPress usa e da padrão.
+/// Funciona com o projeto parado (aí só a pasta padrão é conhecida).
 pub fn remove_login_plugin(base: &Path, p: &Project) -> Result<(), String> {
-    let file = runtime::docroot_dir(base, p).join("wp-content").join("mu-plugins").join(LOGIN_PLUGIN_FILE);
-    match fs::remove_file(&file) {
-        Ok(()) => Ok(()),
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(e) => Err(e.to_string()),
+    let default = runtime::docroot_dir(base, p).join("wp-content").join("mu-plugins");
+    let mut dirs = vec![mu_plugins_dir(base, p)];
+    if !dirs.contains(&default) {
+        dirs.push(default);
     }
+    for dir in dirs {
+        match fs::remove_file(dir.join(LOGIN_PLUGIN_FILE)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.to_string()),
+        }
+    }
+    Ok(())
 }
 
 /// Gera um código de uso único para `user` (vale 60 s) e o guarda no banco do site.

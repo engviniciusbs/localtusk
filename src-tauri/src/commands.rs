@@ -583,7 +583,7 @@ pub async fn open_wp_admin(
             let user = resolve_admin(&p.auto_login_user, &admins)?;
             wp::install_login_plugin(&state.base, &p)?;
             let token = wp::create_login_token(&state.base, &p, &user)?;
-            Ok::<String, String>(format!("{}/?{}={token}", project::site_url(&p), wp::LOGIN_PARAM))
+            Ok::<String, String>(format!("{}/wp-login.php?{}={token}", project::site_url(&p), wp::LOGIN_PARAM))
         })();
         Ok(match attempt {
             Ok(url) => (url, None),

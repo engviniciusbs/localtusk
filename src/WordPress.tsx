@@ -50,6 +50,7 @@ export default function WordPressPanel(props: {
   const [terminalBusy, setTerminalBusy] = useState(false);
   const [admins, setAdmins] = useState<string[]>([]);
   const [loginBusy, setLoginBusy] = useState(false);
+  const [adminBusy, setAdminBusy] = useState(false);
   const busy = submitting || isBusy(progress);
   // Se a pasta pública tem arquivos que não são do WordPress, eles serão apagados.
   const willWipe = p.docrootInUse;
@@ -70,10 +71,8 @@ export default function WordPressPanel(props: {
   }
 
   useEffect(() => {
-    if (!p.running || !p.hasWordpress) {
-      setAdmins([]);
-      return;
-    }
+    setAdmins([]);
+    if (!p.running || !p.hasWordpress) return;
     let alive = true;
     api
       .listWpAdmins(p.id)
@@ -109,11 +108,14 @@ export default function WordPressPanel(props: {
   }
 
   async function openWpAdmin() {
+    setAdminBusy(true);
     try {
       const msg = await api.openWpAdmin(p.id);
       if (msg) props.onError(msg);
     } catch (err) {
       props.onError(errMsg(err));
+    } finally {
+      setAdminBusy(false);
     }
   }
 
@@ -149,10 +151,10 @@ export default function WordPressPanel(props: {
             <div className="row">
               <button
                 className="btn small primary"
-                disabled={!p.running}
+                disabled={!p.running || adminBusy}
                 onClick={openWpAdmin}
               >
-                <Icon name="external" size={13} /> wp-admin
+                <Icon name="external" size={13} /> {adminBusy ? "Abrindo…" : "wp-admin"}
               </button>
               <button
                 className="btn small"

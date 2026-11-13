@@ -1853,7 +1853,7 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
 
         let host = format!("Host: {}:{http}\r\n", project::site_host(&p));
         let param = crate::wp::LOGIN_PARAM;
-        let visit = |token: &str| http_request(http, "GET", &format!("/?{param}={token}"), &host, "");
+        let visit = |token: &str| http_request(http, "GET", &format!("/wp-login.php?{param}={token}"), &host, "");
         let location = |r: &str| r.lines().find_map(|l| l.strip_prefix("Location: ").or_else(|| l.strip_prefix("location: "))).unwrap_or("").trim().to_string();
         let has_session = |r: &str| r.lines().any(|l| l.to_ascii_lowercase().starts_with("set-cookie: wordpress_logged_in_") && !l.contains("=deleted"));
 
@@ -1872,7 +1872,7 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
         assert!(admin.contains(" 200") && admin.contains("id=\"wpadminbar\""), "wp-admin não abriu logado");
 
         // Valor que não é texto (`?localtusk-login[]=x`) também volta para o login.
-        let arr = http_request(http, "GET", &format!("/?{param}[]=x"), &host, "");
+        let arr = http_request(http, "GET", &format!("/wp-login.php?{param}[]=x"), &host, "");
         assert!(arr.contains(" 302") && location(&arr).contains("wp-login.php") && !has_session(&arr), "{arr}");
 
         // Uso único.
@@ -1902,7 +1902,11 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
         let denied = visit(&reader);
         assert!(denied.contains(" 302") && location(&denied).contains("wp-login.php") && !has_session(&denied), "{denied}");
 
-        // Remover com o projeto parado.
+        // Remover com o projeto rodando e parado.
+        crate::wp::remove_login_plugin(&base, &p).unwrap();
+        assert!(!plugin.exists(), "plugin ficou após remover");
+        crate::wp::install_login_plugin(&base, &p).unwrap();
+        assert!(plugin.is_file());
         stop(&mut running);
         crate::wp::remove_login_plugin(&base, &p).unwrap();
         assert!(!plugin.exists());
