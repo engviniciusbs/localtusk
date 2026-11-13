@@ -39,6 +39,10 @@ export interface Project {
   /** Redis (Valkey) ligado neste projeto. */
   redis: boolean;
   redisPort: number;
+  /** Login automático no wp-admin ligado. */
+  autoLogin: boolean;
+  /** Administrador usado no login automático. */
+  autoLoginUser: string;
 }
 
 export interface SslStatus {
@@ -362,6 +366,10 @@ export const api = {
   installValkey: (version: string) => invoke<void>("install_valkey", { version }),
   uninstallValkey: (version: string) => invoke<void>("uninstall_valkey", { version }),
   openSite: (id: string, path?: string) => invoke<void>("open_site", { id, path }),
+  setAutoLogin: (id: string, enabled: boolean, user: string) =>
+    invoke<Project>("set_auto_login", { id, enabled, user }),
+  listWpAdmins: (id: string) => invoke<string[]>("list_wp_admins", { id }),
+  openWpAdmin: (id: string) => invoke<string | null>("open_wp_admin", { id }),
   openTerminal: (id: string) => invoke<void>("open_terminal", { id }),
   installWordpress: (id: string, options: WpOptions) =>
     invoke<void>("install_wordpress", { id, options }),
