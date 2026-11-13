@@ -1059,20 +1059,13 @@ fn project_from_manifest(state: &AppState, m: &backup::Manifest, new_name: Optio
         wanted
     };
 
-    // Mantém as portas originais quando estão livres.
+    // Mantém as portas originais quando estão livres (porta 0 = escolher uma livre).
     let mut reserved = project::reserved_ports(&projects);
-    let http_port = if !reserved.contains(&m.http_port) && project::port_is_free(m.http_port) {
-        m.http_port
-    } else {
-        project::free_port(8000, &reserved).ok_or("sem portas HTTP livres")?
-    };
+    let http_port = project::pick_port(m.http_port, 8000, &reserved).ok_or("sem portas HTTP livres")?;
     reserved.insert(http_port);
     let engine = if project::valid_engine(&m.db_engine) { m.db_engine.clone() } else { project::ENGINE_MYSQL.to_string() };
-    let db_port = if !reserved.contains(&m.db_port) && project::port_is_free(m.db_port) {
-        m.db_port
-    } else {
-        project::free_port(project::db_port_start(&engine), &reserved).ok_or("sem portas de banco livres")?
-    };
+    let db_port = project::pick_port(m.db_port, project::db_port_start(&engine), &reserved)
+        .ok_or("sem portas de banco livres")?;
 
     // Versões que não estão instaladas aqui viram "a mais recente".
     let php_version = if tools::php_installs(&state.base)
@@ -1116,22 +1109,34 @@ pub async fn restore_backup(
     path: String,
     target: Option<String>,
 ) -> Result<RestoreResult, String> {
-    restore_impl(app, state.inner().clone(), path, target, None).await
+    let archive = PathBuf::from(&path);
+    let manifest = {
+        let a = archive.clone();
+        blocking(move || backup::read_manifest(&a)).await?
+    };
+    restore_impl(app, state.inner().clone(), Origin::Archive(archive), manifest, target, None).await
+}
+
+/// De onde vem o conteúdo restaurado.
+enum Origin {
+    /// Backup ou blueprint (`.tar.gz`).
+    Archive(PathBuf),
+    /// Pasta pública + dump SQL (importador do Local). Só para projetos novos.
+    Folder { public: PathBuf, dump: PathBuf },
 }
 
 /// Núcleo da restauração. `new_name` só vale sem `target` e marca a criação a partir de um blueprint.
 async fn restore_impl(
     app: AppHandle,
     st: AppState,
-    path: String,
+    origin: Origin,
+    manifest: backup::Manifest,
     target: Option<String>,
     new_name: Option<String>,
 ) -> Result<RestoreResult, String> {
-    let archive = PathBuf::from(&path);
-    let manifest = {
-        let a = archive.clone();
-        blocking(move || backup::read_manifest(&a)).await?
-    };
+    if target.is_some() && matches!(origin, Origin::Folder { .. }) {
+        return Err("uma pasta só pode ser restaurada como um projeto novo".into());
+    }
     let new_docroot = clean_docroot(&manifest.docroot)?;
 
     let is_new = target.is_none();
@@ -1180,7 +1185,11 @@ async fn restore_impl(
         }
 
         let p = job_state.find(&job_id)?;
-        let restored = backup::restore_into(&base, &p, &archive, &key, progress);
+        let source = match &origin {
+            Origin::Archive(archive) => backup::RestoreSource::Archive(archive),
+            Origin::Folder { public, dump } => backup::RestoreSource::Folder { public, dump },
+        };
+        let restored = backup::restore_into(&base, &p, source, &key, progress);
         if !is_new && !was_running {
             let _ = stop_blocking(&job_state, &job_id);
         }
@@ -1334,11 +1343,165 @@ pub async fn create_project_from_blueprint(
         blocking(move || blueprint::read(&p)).await?
     };
     let note = missing_versions_note(&st, &manifest);
-    let mut result = restore_impl(app, st, path, None, Some(name)).await?;
+    let mut result = restore_impl(app, st, Origin::Archive(PathBuf::from(&path)), manifest, None, Some(name)).await?;
     result.warning = match (result.warning.take(), note) {
         (Some(w), Some(n)) => Some(format!("{n}\n\n{w}")),
         (w, n) => w.or(n),
     };
+    Ok(result)
+}
+
+// ------------------------------------------------------------------ Importar do Local
+
+const MSG_SEM_LOCAL: &str = "Nenhuma instalação do Local encontrada neste computador.";
+
+fn home_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Pasta de dados do Local, se existir e tiver a lista de sites.
+fn local_data() -> Result<(PathBuf, PathBuf), String> {
+    let home = home_dir();
+    let dir = crate::local_import::local_data_dir(&home).ok_or(MSG_SEM_LOCAL)?;
+    if !dir.join("sites.json").is_file() {
+        return Err(MSG_SEM_LOCAL.into());
+    }
+    Ok((dir, home))
+}
+
+/// Versão (série) que um site do Local pede, e o que fazer se ela não estiver instalada.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionNeed {
+    pub wanted: String,
+    pub installed: bool,
+    pub install_version: Option<String>,
+    pub fallback: Option<String>,
+    pub fallback_older: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalImportCheck {
+    pub php: VersionNeed,
+    pub mysql: VersionNeed,
+}
+
+fn version_need(wanted: String, installed: Vec<String>, install_version: Option<String>) -> VersionNeed {
+    let is_installed = installed.contains(&wanted);
+    let (fallback, fallback_older) = if is_installed {
+        (None, false)
+    } else {
+        match crate::local_import::fallback_version(&wanted, &installed) {
+            Some((v, older)) => (Some(v), older),
+            None => (None, false),
+        }
+    };
+    VersionNeed { wanted, installed: is_installed, install_version: if is_installed { None } else { install_version }, fallback, fallback_older }
+}
+
+#[tauri::command]
+pub async fn list_local_sites(_state: State<'_, AppState>) -> Result<Vec<crate::local_import::LocalSite>, String> {
+    blocking(move || {
+        let (dir, home) = local_data()?;
+        crate::local_import::list_sites(&dir, &home)
+    })
+    .await
+}
+
+/// Compara as versões de PHP e MySQL do site com as instaladas aqui.
+#[tauri::command]
+pub async fn check_local_site(state: State<'_, AppState>, id: String) -> Result<LocalImportCheck, String> {
+    let base = state.base.clone();
+    blocking(move || {
+        let (dir, home) = local_data()?;
+        let site = crate::local_import::find_site(&dir, &home, &id)?;
+        // Sem versão no Local: usa a mais nova instalada, sem perguntar (ou oferece a do catálogo).
+        let php_have: Vec<String> = tools::php_installs(&base).into_iter().map(|i| i.version).collect();
+        let php_cat: Vec<_> = php_manager::catalog(&base).unwrap_or_default().into_iter().filter(|r| r.latest).collect();
+        let php_series: Vec<String> = php_cat.iter().map(|r| r.minor.clone()).collect();
+        let php_wanted = crate::local_import::wanted_or_newest(
+            &crate::local_import::series(&site.php_version),
+            &php_have,
+            &php_series,
+        );
+        let php_install = php_cat.into_iter().find(|r| r.minor == php_wanted).map(|r| r.version);
+
+        let mysql_have: Vec<String> = mysql_manager::installs(&base).into_iter().map(|i| i.series).collect();
+        let mysql_cat: Vec<_> = mysql_manager::catalog(&base).unwrap_or_default().into_iter().filter(|r| r.latest).collect();
+        let mysql_series: Vec<String> = mysql_cat.iter().map(|r| r.series.clone()).collect();
+        let mysql_wanted = crate::local_import::wanted_or_newest(
+            &crate::local_import::series(&site.mysql_version),
+            &mysql_have,
+            &mysql_series,
+        );
+        let mysql_install = mysql_cat.into_iter().find(|r| r.series == mysql_wanted).map(|r| r.version);
+        Ok(LocalImportCheck {
+            php: version_need(php_wanted, php_have, php_install),
+            mysql: version_need(mysql_wanted, mysql_have, mysql_install),
+        })
+    })
+    .await
+}
+
+/// Cria um projeto novo com os arquivos e o banco de um site do Local (a origem só é lida).
+#[tauri::command]
+pub async fn import_local_site(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    php_version: String,
+    mysql_version: String,
+) -> Result<RestoreResult, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("informe um nome para o projeto".into());
+    }
+    let site = {
+        let id = id.clone();
+        blocking(move || {
+            let (dir, home) = local_data()?;
+            crate::local_import::find_site(&dir, &home, &id)
+        })
+        .await?
+    };
+    if let Some(b) = &site.blocker {
+        return Err(b.clone());
+    }
+    let manifest = backup::Manifest {
+        format: 1,
+        id: project::slugify(&name),
+        name: name.clone(),
+        docroot: "public".into(),
+        php_version,
+        db_engine: project::ENGINE_MYSQL.into(),
+        db_version: mysql_version,
+        db_name: String::new(),
+        http_port: 0,
+        db_port: 0,
+        site_url: String::new(),
+        has_wordpress: true,
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        kind: String::new(),
+        blueprint_name: String::new(),
+        description: String::new(),
+    };
+    let origin = Origin::Folder {
+        public: crate::local_import::public_dir(&site),
+        dump: crate::local_import::dump_file(&site),
+    };
+    let mut result = restore_impl(app, state.inner().clone(), origin, manifest, None, Some(name)).await?;
+    let notes = site.warnings.join("\n");
+    if !notes.is_empty() {
+        result.warning = Some(match result.warning.take() {
+            Some(w) => format!("{notes}\n\n{w}"),
+            None => notes,
+        });
+    }
     Ok(result)
 }
 

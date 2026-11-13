@@ -246,6 +246,42 @@ export interface RestoreResult {
   warning: string | null;
 }
 
+/** Site do Local (by Flywheel) que dá para importar. */
+export interface LocalSite {
+  id: string;
+  name: string;
+  path: string;
+  domain: string;
+  phpVersion: string;
+  mysqlVersion: string;
+  webServer: string;
+  multisite: boolean;
+  running: boolean;
+  /** Segundos desde 1970 em que o Local salvou o banco (0 se nunca salvou). */
+  dumpSavedAt: number;
+  dumpStale: boolean;
+  /** Motivo pelo qual o site não pode ser importado agora. */
+  blocker: string | null;
+  warnings: string[];
+}
+
+export interface VersionNeed {
+  /** Série usada pelo site (ex.: 8.2). */
+  wanted: string;
+  installed: boolean;
+  /** Versão completa para instalar (patch mais novo da série), se houver no catálogo. */
+  installVersion: string | null;
+  /** Série instalada mais próxima, se houver. */
+  fallback: string | null;
+  /** A alternativa é mais antiga que a versão do site. */
+  fallbackOlder: boolean;
+}
+
+export interface LocalImportCheck {
+  php: VersionNeed;
+  mysql: VersionNeed;
+}
+
 export interface ExtraStatus {
   id: "caddy" | "adminneo" | "mailpit" | "wpcli";
   label: string;
@@ -347,6 +383,10 @@ export const api = {
     invoke<BlueprintInfo>("create_blueprint", { id, name, description }),
   createProjectFromBlueprint: (path: string, name: string) =>
     invoke<RestoreResult>("create_project_from_blueprint", { path, name }),
+  listLocalSites: () => invoke<LocalSite[]>("list_local_sites"),
+  checkLocalSite: (id: string) => invoke<LocalImportCheck>("check_local_site", { id }),
+  importLocalSite: (id: string, name: string, phpVersion: string, mysqlVersion: string) =>
+    invoke<RestoreResult>("import_local_site", { id, name, phpVersion, mysqlVersion }),
   deleteBlueprint: (path: string) => invoke<void>("delete_blueprint", { path }),
   importBlueprint: (path: string) => invoke<BlueprintInfo>("import_blueprint", { path }),
   /** Devolve o caminho gravado (a extensão `.tar.gz` é acrescentada se faltar). */
