@@ -7,12 +7,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-const MSG_RODANDO: &str = "Pare o site no Local antes de importar.";
-const MSG_SEM_PASTA: &str = "A pasta do site não foi encontrada.";
-const MSG_SEM_DUMP: &str = "O Local ainda não salvou o banco deste site. Abra o site no Local e pare-o para o banco ser salvo.";
-const MSG_MULTISITE: &str = "Site multisite: os endereços do banco podem precisar de ajuste depois da importação.";
-const MSG_APACHE: &str = "O site usa Apache no Local; aqui ele roda com o servidor padrão do LocalTusk.";
-const MSG_DUMP_VELHO: &str = "O banco salvo está mais antigo que o banco em uso no Local; pare o site no Local para atualizá-lo.";
+const MSG_RODANDO: &str = "Pare o site no Local para importar (se o Local estiver fechado, abra-o e pare o site).";
+const MSG_SEM_DUMP: &str = "O Local ainda não salvou o banco deste site. Inicie e pare o site no Local e tente de novo.";
+const MSG_MULTISITE: &str = "Sites multisite podem precisar de ajustes manuais.";
+const MSG_APACHE: &str = "Regras do .htaccess não são usadas pelo LocalTusk.";
+const MSG_DUMP_VELHO: &str = "O banco salvo pelo Local pode estar desatualizado. Inicie e pare o site no Local para garantir.";
 
 /// Folga entre o dump e o banco vivo antes de considerar o dump desatualizado.
 const FOLGA_DUMP: Duration = Duration::from_secs(120);
@@ -166,8 +165,8 @@ fn build_site(data_dir: &Path, home: &Path, id: &str, v: &Value, status: Option<
 
     site.blocker = if site.running {
         Some(MSG_RODANDO.to_string())
-    } else if site.path.is_empty() || !Path::new(&site.path).is_dir() {
-        Some(MSG_SEM_PASTA.to_string())
+    } else if !public_dir(&site).is_dir() {
+        Some(format!("A pasta do site não foi encontrada: {}.", public_dir(&site).display()))
     } else if dump_time.is_none() {
         Some(MSG_SEM_DUMP.to_string())
     } else {
@@ -260,8 +259,10 @@ mod tests {
         let (data, home) = fake_local(&dir);
         let s = get(&list_sites(&data, &home).unwrap(), "run1");
         assert!(s.running);
-        assert_eq!(s.blocker.as_deref(), Some(MSG_RODANDO));
-        assert!(s.blocker.unwrap().contains("Pare o site no Local"));
+        assert_eq!(
+            s.blocker.as_deref(),
+            Some("Pare o site no Local para importar (se o Local estiver fechado, abra-o e pare o site).")
+        );
     }
 
     #[test]
@@ -269,7 +270,10 @@ mod tests {
         let dir = temp_base("semdump");
         let (data, home) = fake_local(&dir);
         let s = get(&list_sites(&data, &home).unwrap(), "nodump");
-        assert!(s.blocker.unwrap().contains("ainda não salvou o banco"));
+        assert_eq!(
+            s.blocker.as_deref(),
+            Some("O Local ainda não salvou o banco deste site. Inicie e pare o site no Local e tente de novo.")
+        );
         assert_eq!(s.dump_saved_at, 0);
     }
 
@@ -279,8 +283,19 @@ mod tests {
         let (data, home) = fake_local(&dir);
         let all = list_sites(&data, &home).unwrap();
         let s = get(&all, "gone");
-        assert!(s.blocker.unwrap().contains("pasta do site não foi encontrada"));
+        let esperado = format!("A pasta do site não foi encontrada: {}.", home.join("Local Sites/sumiu/app/public").display());
+        assert_eq!(s.blocker.as_deref(), Some(esperado.as_str()));
         assert!(get(&all, "snap1").blocker.is_none());
+    }
+
+    #[test]
+    fn raiz_existe_mas_sem_app_public_fica_bloqueado() {
+        let dir = temp_base("sempublic");
+        let (data, home) = fake_local(&dir);
+        fs::remove_dir_all(home.join("Local Sites/snap/app/public")).unwrap();
+        let s = get(&list_sites(&data, &home).unwrap(), "snap1");
+        let esperado = format!("A pasta do site não foi encontrada: {}.", home.join("Local Sites/snap/app/public").display());
+        assert_eq!(s.blocker.as_deref(), Some(esperado.as_str()));
     }
 
     #[test]
@@ -301,8 +316,8 @@ mod tests {
         let s = get(&list_sites(&data, &home).unwrap(), "ms");
         assert!(s.multisite);
         assert_eq!(s.web_server, "apache");
-        assert!(s.warnings.contains(&MSG_MULTISITE.to_string()));
-        assert!(s.warnings.contains(&MSG_APACHE.to_string()));
+        assert!(s.warnings.contains(&"Sites multisite podem precisar de ajustes manuais.".to_string()));
+        assert!(s.warnings.contains(&"Regras do .htaccess não são usadas pelo LocalTusk.".to_string()));
         assert!(s.blocker.is_none());
     }
 
@@ -319,7 +334,9 @@ mod tests {
         set(dump_time + Duration::from_secs(300));
         let s = get(&list_sites(&data, &home).unwrap(), "snap1");
         assert!(s.dump_stale);
-        assert!(s.warnings.contains(&MSG_DUMP_VELHO.to_string()));
+        assert!(s.warnings.contains(
+            &"O banco salvo pelo Local pode estar desatualizado. Inicie e pare o site no Local para garantir.".to_string()
+        ));
         assert!(s.blocker.is_none());
 
         set(dump_time + Duration::from_secs(1));
