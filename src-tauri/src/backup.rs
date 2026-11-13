@@ -709,7 +709,8 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn caminho_antigo_inclui_o_real_sem_links() {
-        let base = temp_base("real");
+        // Caminho real da pasta temporária (no macOS, /var é um link para /private/var).
+        let base = temp_base("real").canonicalize().unwrap();
         fs::create_dir_all(base.join("real/public")).unwrap();
         std::os::unix::fs::symlink(base.join("real"), base.join("link")).unwrap();
         let olds = old_paths(&base.join("link/public/"));
