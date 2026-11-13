@@ -126,6 +126,39 @@ export interface AppInfo {
   installing: string[];
 }
 
+/** Papel de um arquivo no mapa do projeto. */
+export type FileKind = "entry" | "normal" | "orphan" | "unreachable";
+
+export interface CodeLink {
+  path: string;
+  /** `include` (require/include) ou `classe` (uso de uma classe declarada no outro arquivo). */
+  via: "include" | "classe";
+}
+
+export interface CodeFile {
+  path: string;
+  kind: FileKind;
+  entryReason: string | null;
+  lines: number;
+  classes: string[];
+  uses: CodeLink[];
+  usedBy: CodeLink[];
+  dynamicIncludes: number;
+}
+
+/** Quem chama quem no projeto, lido dos arquivos PHP (aba Mapa). */
+export interface CodeMap {
+  files: CodeFile[];
+  totalLinks: number;
+  entries: number;
+  orphans: number;
+  unreachable: number;
+  dynamicIncludes: number;
+  truncated: boolean;
+  hasComposer: boolean;
+  notes: string[];
+}
+
 /** Modelo de projeto (arquivos + banco + versões) guardado em `~/LocalTusk/blueprints`. */
 export interface BlueprintInfo {
   fileName: string;
@@ -321,6 +354,7 @@ export const api = {
   openBlueprintsDir: () => invoke<void>("open_blueprints_dir"),
   openFolder: (id: string) => invoke<void>("open_folder", { id }),
   readLog: (id: string, file: string) => invoke<string>("read_log", { id, file }),
+  analyzeProject: (id: string) => invoke<CodeMap>("analyze_project", { id }),
   appInfo: () => invoke<AppInfo>("app_info"),
   openDataDir: () => invoke<void>("open_data_dir"),
   phpCatalog: () => invoke<PhpRelease[]>("php_catalog"),

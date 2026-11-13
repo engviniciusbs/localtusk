@@ -1,6 +1,7 @@
 mod apitools;
 mod backup;
 mod blueprint;
+mod codemap;
 mod commands;
 mod download;
 mod extras;
@@ -60,6 +61,7 @@ pub fn run() {
             commands::open_site,
             commands::open_folder,
             commands::read_log,
+            commands::analyze_project,
             commands::app_info,
             commands::open_data_dir,
             commands::php_catalog,

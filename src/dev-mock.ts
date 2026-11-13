@@ -59,6 +59,24 @@ const logs = `[10/Nov/2026:17:02:11] GET / 200 14ms
 
 /** Com `?slow` na URL, as listas demoram a chegar: serve para ver os esqueletos de carregamento. */
 const slow = new URLSearchParams(location.search).has("slow");
+const L = (path: string, via: "include" | "classe" = "include") => ({ path, via });
+const codeMap = {
+  files: [
+    { path: "public/index.php", kind: "entry", entryReason: "pasta pública", lines: 24, classes: [], uses: [L("src/bootstrap.php"), L("src/Controllers/HomeController.php", "classe")], usedBy: [], dynamicIncludes: 0 },
+    { path: "src/bootstrap.php", kind: "normal", entryReason: null, lines: 41, classes: [], uses: [L("src/config.php"), L("lib/helpers.php"), L("src/Database.php", "classe")], usedBy: [L("public/index.php")], dynamicIncludes: 0 },
+    { path: "src/config.php", kind: "normal", entryReason: null, lines: 18, classes: [], uses: [], usedBy: [L("src/bootstrap.php")], dynamicIncludes: 0 },
+    { path: "lib/helpers.php", kind: "normal", entryReason: null, lines: 63, classes: [], uses: [], usedBy: [L("src/bootstrap.php")], dynamicIncludes: 0 },
+    { path: "src/Database.php", kind: "normal", entryReason: null, lines: 77, classes: ["App\\Database"], uses: [], usedBy: [L("src/bootstrap.php", "classe"), L("src/Models/User.php", "classe")], dynamicIncludes: 0 },
+    { path: "src/Controllers/HomeController.php", kind: "normal", entryReason: null, lines: 52, classes: ["App\\Controllers\\HomeController"], uses: [L("src/Models/User.php", "classe")], usedBy: [L("public/index.php", "classe")], dynamicIncludes: 0 },
+    { path: "src/Models/User.php", kind: "normal", entryReason: null, lines: 96, classes: ["App\\Models\\User"], uses: [L("src/Database.php", "classe")], usedBy: [L("src/Controllers/HomeController.php", "classe")], dynamicIncludes: 0 },
+    { path: "src/Legacy/Exporter.php", kind: "orphan", entryReason: null, lines: 134, classes: ["App\\Legacy\\Exporter"], uses: [L("src/Legacy/Csv.php", "classe")], usedBy: [], dynamicIncludes: 0 },
+    { path: "src/Legacy/Csv.php", kind: "unreachable", entryReason: null, lines: 58, classes: ["App\\Legacy\\Csv"], uses: [], usedBy: [L("src/Legacy/Exporter.php", "classe")], dynamicIncludes: 0 },
+    { path: "src/teste-antigo.php", kind: "orphan", entryReason: null, lines: 12, classes: [], uses: [], usedBy: [], dynamicIncludes: 1 },
+  ],
+  totalLinks: 12, entries: 1, orphans: 2, unreachable: 1, dynamicIncludes: 1, truncated: false, hasComposer: true,
+  notes: ["1 require/include usam variáveis e não puderam ser seguidos. Arquivos carregados assim aparecem como órfãos por engano."],
+};
+
 const later = <T>(value: T) => new Promise<T>((resolve) => setTimeout(() => resolve(value), slow ? 9000 : 0));
 
 function lanUrlsFor(p: (typeof projects)[number]) {
@@ -125,6 +143,7 @@ export function installDevMock() {
         case "php_catalog": return phpCatalog;
         case "mysql_catalog": return mysqlCatalog;
         case "read_log": return logs;
+        case "analyze_project": return later(codeMap);
         case "ssl_status": return { caReady: sslTrusted || projects.some((x) => x.https), trusted: sslTrusted, caPath: "/Users/dev/LocalTusk/ssl/caddy/pki/authorities/local/root.crt", canTrust: true };
         case "trust_certificate": {
           // Com "?cancelar" na URL, simula a pessoa cancelando o pedido de senha do macOS.

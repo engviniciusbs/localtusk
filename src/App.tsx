@@ -26,6 +26,7 @@ import {
 import PhpManager, { ProgressView, isBusy } from "./PhpManager";
 import RedisPanel from "./Redis";
 import WordPressPanel from "./WordPress";
+import { CodeMapTab } from "./CodeMap";
 import { Copyable, Icon, IconName, Led, Logo, Skeleton, Spinner } from "./ui";
 import "./App.css";
 
@@ -537,7 +538,7 @@ function ProjectView(props: {
   onError: (m: string) => void;
 }) {
   const { project: p } = props;
-  const [tab, setTab] = useState<"overview" | "api" | "logs">("overview");
+  const [tab, setTab] = useState<"overview" | "api" | "logs" | "map">("overview");
   const [working, setWorking] = useState<null | "start" | "stop">(null);
 
   async function run<T>(kind: "start" | "stop", fn: () => Promise<T>) {
@@ -602,12 +603,17 @@ function ProjectView(props: {
         <button role="tab" aria-selected={tab === "logs"} className={tab === "logs" ? "active" : ""} onClick={() => setTab("logs")}>
           Logs
         </button>
+        <button role="tab" aria-selected={tab === "map"} className={tab === "map" ? "active" : ""} onClick={() => setTab("map")}>
+          Mapa
+        </button>
       </nav>
 
       {tab === "overview" ? (
         <Overview {...props} locked={disabled || p.running} />
       ) : tab === "api" ? (
         <ApiTools project={p} onError={props.onError} />
+      ) : tab === "map" ? (
+        <CodeMapTab project={p} onError={props.onError} />
       ) : (
         <Logs id={p.id} />
       )}

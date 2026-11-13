@@ -2048,6 +2048,7 @@ dependencies = [
  "flate2",
  "libc",
  "liblzma",
+ "regex",
  "serde",
  "serde_json",
  "sha2 0.11.1",

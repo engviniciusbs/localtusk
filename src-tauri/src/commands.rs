@@ -1,6 +1,7 @@
 use crate::apitools::{self, ApiRequest, ApiResponse, RequestsChunk};
 use crate::backup::{self, BackupInfo};
 use crate::blueprint::{self, BlueprintInfo};
+use crate::codemap;
 use crate::download::InstallProgress;
 use crate::extras::{self, ExtraStatus};
 use crate::mysql_manager::{self, MysqlInstall, MysqlRelease};
@@ -506,6 +507,14 @@ pub fn open_folder(app: AppHandle, state: State<'_, AppState>, id: String) -> Re
 #[tauri::command]
 pub fn read_log(state: State<'_, AppState>, id: String, file: String) -> Result<String, String> {
     runtime::read_log(&state.base, &id, &file, 300)
+}
+
+/// Mapa do projeto: quem chama quem e quais arquivos ninguém usa.
+#[tauri::command]
+pub async fn analyze_project(state: State<'_, AppState>, id: String) -> Result<codemap::CodeMap, String> {
+    let p = state.find(&id)?;
+    let root = runtime::app_dir(&state.base, &id);
+    blocking(move || Ok(codemap::analyze(&root, &p.docroot))).await
 }
 
 #[derive(Serialize)]
