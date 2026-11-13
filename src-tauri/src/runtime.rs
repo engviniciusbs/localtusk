@@ -1871,6 +1871,10 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
         let admin = http_request(http, "GET", "/wp-admin/", &format!("{host}Cookie: {}\r\n", cookies.join("; ")), "");
         assert!(admin.contains(" 200") && admin.contains("id=\"wpadminbar\""), "wp-admin não abriu logado");
 
+        // Valor que não é texto (`?localtusk-login[]=x`) também volta para o login.
+        let arr = http_request(http, "GET", &format!("/?{param}[]=x"), &host, "");
+        assert!(arr.contains(" 302") && location(&arr).contains("wp-login.php") && !has_session(&arr), "{arr}");
+
         // Uso único.
         let again = visit(&token);
         assert!(again.contains(" 302") && location(&again).contains("wp-login.php") && !has_session(&again), "{again}");

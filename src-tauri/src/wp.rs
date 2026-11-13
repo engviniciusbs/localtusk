@@ -707,7 +707,11 @@ add_action('init', function () {
     if (!isset($_GET['localtusk-login'])) {
         return;
     }
-    $token = (string) $_GET['localtusk-login'];
+    if (!is_string($_GET['localtusk-login'])) {
+        wp_safe_redirect(wp_login_url());
+        exit;
+    }
+    $token = $_GET['localtusk-login'];
     $key = 'localtusk_login_' . hash('sha256', $token);
     $login = get_transient($key);
     delete_transient($key);
@@ -752,7 +756,12 @@ fn wp_output(base: &Path, p: &Project, args: &[&str], timeout: Duration) -> Resu
     let mut log = OpenOptions::new().create(true).append(true).open(&log_path).map_err(|e| e.to_string())?;
     let label = format!("wp {}", args.first().copied().unwrap_or(""));
     let _ = writeln!(log, "\n$ {label}");
-    let out_path = logs.join("wp-cli.out.tmp");
+    static SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let out_path = logs.join(format!(
+        "wp-cli.{}.{}.out.tmp",
+        std::process::id(),
+        SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
     let out_file = fs::File::create(&out_path).map_err(|e| e.to_string())?;
     cmd.stdin(Stdio::null()).stdout(Stdio::from(out_file)).stderr(Stdio::from(log));
     let result = (|| {
@@ -788,12 +797,40 @@ pub fn admin_users(base: &Path, p: &Project) -> Result<Vec<String>, String> {
     Ok(out.lines().map(str::trim).filter(|l| !l.is_empty()).map(String::from).collect())
 }
 
-/// Pasta dos mu-plugins: a que o WordPress usa; com o projeto parado, a padrão.
+/// Escolhe a pasta dos mu-plugins: a do WordPress só vale se estiver dentro de uma das
+/// pastas permitidas (o `wp-config.php` pode apontá-la para fora do projeto).
+fn choose_mu_dir(resolved: Option<PathBuf>, allowed: &[PathBuf], default: PathBuf) -> PathBuf {
+    let canon_allowed: Vec<PathBuf> = allowed.iter().filter_map(|a| a.canonicalize().ok()).collect();
+    if let Some(dir) = resolved {
+        // A pasta pode ainda não existir: valida o ancestral existente mais próximo.
+        let mut probe = dir.as_path();
+        loop {
+            if let Ok(c) = probe.canonicalize() {
+                let rest = dir.strip_prefix(probe).unwrap_or(Path::new(""));
+                let full = c.join(rest);
+                let clean = !rest.components().any(|c| matches!(c, std::path::Component::ParentDir));
+                if clean && canon_allowed.iter().any(|a| full.starts_with(a)) {
+                    return dir;
+                }
+                break;
+            }
+            match probe.parent() {
+                Some(par) => probe = par,
+                None => break,
+            }
+        }
+    }
+    default
+}
+
+/// Pasta dos mu-plugins: a que o WordPress usa (se for do projeto); senão, a padrão.
 fn mu_plugins_dir(base: &Path, p: &Project) -> PathBuf {
-    wp_output(base, p, &["eval", "echo WPMU_PLUGIN_DIR;"], Duration::from_secs(30))
+    let docroot = runtime::docroot_dir(base, p);
+    let default = docroot.join("wp-content").join("mu-plugins");
+    let resolved = wp_output(base, p, &["eval", "echo WPMU_PLUGIN_DIR;"], Duration::from_secs(30))
         .ok()
-        .and_then(|o| o.lines().map(str::trim).rfind(|l| l.starts_with('/')).map(PathBuf::from))
-        .unwrap_or_else(|| runtime::docroot_dir(base, p).join("wp-content").join("mu-plugins"))
+        .and_then(|o| o.lines().map(str::trim).rfind(|l| l.starts_with('/')).map(PathBuf::from));
+    choose_mu_dir(resolved, &[docroot, project::project_dir(base, &p.id)], default)
 }
 
 /// Grava o mu-plugin de login automático (sobrescreve; pode ser repetido).
@@ -826,6 +863,25 @@ mod tests {
     use super::*;
 
     #[test]
+    fn pasta_do_mu_plugin_fica_dentro_do_projeto() {
+        let root = std::env::temp_dir().join(format!("lt-mu-{}", std::process::id()));
+        let docroot = root.join("proj/public");
+        fs::create_dir_all(docroot.join("wp-content")).unwrap();
+        let default = docroot.join("wp-content/mu-plugins");
+        let allowed = vec![docroot.clone()];
+        // Dentro do projeto (mesmo sem existir ainda): aceita.
+        assert_eq!(choose_mu_dir(Some(default.clone()), &allowed, default.clone()), default);
+        let custom = docroot.join("extra/mu");
+        assert_eq!(choose_mu_dir(Some(custom.clone()), &allowed, default.clone()), custom);
+        // Fora do projeto, com `..` ou sem resposta: usa a padrão.
+        assert_eq!(choose_mu_dir(Some(root.join("outro/mu")), &allowed, default.clone()), default);
+        assert_eq!(choose_mu_dir(Some(docroot.join("../../fora")), &allowed, default.clone()), default);
+        assert_eq!(choose_mu_dir(Some("/etc/mu".into()), &allowed, default.clone()), default);
+        assert_eq!(choose_mu_dir(None, &allowed, default.clone()), default);
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
     fn login_token_key_usa_hash() {
         let k = login_token_key("abc");
         assert_eq!(k, "localtusk_login_ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
@@ -843,7 +899,7 @@ mod tests {
     #[test]
     fn plugin_confere_usuario_e_uso_unico() {
         // O PHP do mu-plugin tem as peças que garantem a segurança.
-        for s in ["localtusk-login", "localtusk_login_", "hash('sha256'", "delete_transient", "manage_options", "wp_set_auth_cookie", "wp_login_url()"] {
+        for s in ["localtusk-login", "localtusk_login_", "hash('sha256'", "delete_transient", "manage_options", "wp_set_auth_cookie", "wp_login_url()", "is_string("] {
             assert!(LOGIN_PLUGIN_PHP.contains(s), "falta {s}");
         }
     }
