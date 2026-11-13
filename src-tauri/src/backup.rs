@@ -217,6 +217,58 @@ fn dump_database(base: &Path, p: &Project, out: &Path) -> Result<(), String> {
     }
 }
 
+/// Valores de gravação em disco do MySQL do projeto, guardados para voltar depois.
+struct SavedDurability {
+    flush: String,
+    binlog: String,
+}
+
+fn mysql_query(base: &Path, p: &Project, q: &str) -> Option<String> {
+    let bin = mysql_tool(base, p, "mysql").ok()?;
+    let out = Command::new(&bin)
+        .env("MYSQL_PWD", DB_PASSWORD)
+        .arg("--host=127.0.0.1")
+        .arg(format!("--port={}", p.db_port))
+        .arg(format!("--user={DB_USER}"))
+        .args(["-N", "-B", "-e", q])
+        .stdin(Stdio::null())
+        .output()
+        .ok()?;
+    out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Dumps com um INSERT por linha (como o do Local) e o `wp search-replace` fazem o MySQL
+/// gravar no disco a cada linha, o que deixa a importação até ~15x mais lenta. Enquanto o
+/// conteúdo é trazido, a gravação é adiada (seguro num ambiente local); `restore_durability`
+/// volta ao que era. Melhor esforço: se algo falhar, segue no modo normal.
+fn relax_durability(base: &Path, p: &Project) -> Option<SavedDurability> {
+    if project::is_postgres(p) {
+        return None;
+    }
+    let s = mysql_query(base, p, "SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog")?;
+    let mut it = s.split_whitespace();
+    let saved = SavedDurability { flush: it.next()?.to_string(), binlog: it.next()?.to_string() };
+    let numeric = |v: &str| !v.is_empty() && v.chars().all(|c| c.is_ascii_digit());
+    if !numeric(&saved.flush) || !numeric(&saved.binlog) {
+        return None;
+    }
+    mysql_query(base, p, "SET GLOBAL innodb_flush_log_at_trx_commit=2; SET GLOBAL sync_binlog=0;")?;
+    Some(saved)
+}
+
+fn restore_durability(base: &Path, p: &Project, saved: Option<SavedDurability>) {
+    if let Some(s) = saved {
+        let _ = mysql_query(
+            base,
+            p,
+            &format!(
+                "SET GLOBAL innodb_flush_log_at_trx_commit={}; SET GLOBAL sync_binlog={};",
+                s.flush, s.binlog
+            ),
+        );
+    }
+}
+
 fn import_database(base: &Path, p: &Project, dump: &Path) -> Result<(), String> {
     if project::is_postgres(p) {
         return import_postgres(base, p, dump);
@@ -243,41 +295,12 @@ fn import_database(base: &Path, p: &Project, dump: &Path) -> Result<(), String> 
         return Err(format!("Falha ao preparar o banco ({})\n\n{}", out.status, tail(&out.stderr)));
     }
 
-    // Dumps com um INSERT por linha (como o do Local) fazem o MySQL gravar no disco a
-    // cada linha, o que torna a importação até ~15x mais lenta. Durante a importação,
-    // a gravação é adiada (seguro num ambiente local) e depois volta ao que era.
-    let sql = |q: &str| client().args(["-N", "-B", "-e", q]).stdin(Stdio::null()).output();
-    let saved = sql("SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog")
-        .ok()
-        .filter(|o| o.status.success())
-        .and_then(|o| {
-            let s = String::from_utf8_lossy(&o.stdout).trim().to_string();
-            let mut it = s.split_whitespace();
-            Some((it.next()?.to_string(), it.next()?.to_string()))
-        });
-    if saved.is_some() {
-        let _ = sql("SET GLOBAL innodb_flush_log_at_trx_commit=2; SET GLOBAL sync_binlog=0;");
-    }
-
-    let input = File::open(dump).map_err(|e| format!("{}: {e}", dump.display()));
-    let out = input.and_then(|input| {
-        client()
-            .arg(&p.db_name)
-            .stdin(Stdio::from(input))
-            .output()
-            .map_err(|e| format!("mysql: {e}"))
-    });
-
-    if let Some((flush, binlog)) = saved {
-        let restore = |v: &str| v.chars().all(|c| c.is_ascii_digit()) && !v.is_empty();
-        if restore(&flush) && restore(&binlog) {
-            let _ = sql(&format!(
-                "SET GLOBAL innodb_flush_log_at_trx_commit={flush}; SET GLOBAL sync_binlog={binlog};"
-            ));
-        }
-    }
-
-    let out = out?;
+    let input = File::open(dump).map_err(|e| format!("{}: {e}", dump.display()))?;
+    let out = client()
+        .arg(&p.db_name)
+        .stdin(Stdio::from(input))
+        .output()
+        .map_err(|e| format!("mysql: {e}"))?;
     if out.status.success() {
         Ok(())
     } else {
@@ -607,7 +630,12 @@ pub fn restore_into(
                 (dump.to_path_buf(), note)
             }
         };
-        import_database(base, p, &dump)?;
+        let saved = relax_durability(base, p);
+        let imported = import_database(base, p, &dump);
+        if let Err(e) = imported {
+            restore_durability(base, p, saved);
+            return Err(e);
+        }
 
         let mut wp_note = None;
         if wp::is_wordpress(base, p) {
@@ -628,6 +656,7 @@ pub fn restore_into(
                 }
             }
         }
+        restore_durability(base, p, saved);
         Ok(match (links_note, wp_note) {
             (Some(l), Some(w)) => Some(format!("{l}\n\n{w}")),
             (l, w) => l.or(w),

@@ -1983,6 +1983,11 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
             "mysql --skip-column-names -e \"SELECT COUNT(*) FROM wp_options WHERE option_value LIKE '%{old_path}%'\""
         ));
         assert_eq!(hits.trim(), "0", "o banco ainda tem o caminho do Local");
+        // A gravação em disco adiada durante a importação volta ao padrão no fim.
+        let durability = sh_out(
+            "mysql --skip-column-names -e \"SELECT @@GLOBAL.innodb_flush_log_at_trx_commit, @@GLOBAL.sync_binlog\"",
+        );
+        assert_eq!(durability.split_whitespace().collect::<Vec<_>>(), ["1", "1"], "durabilidade: {durability}");
         let ini = fs::read_to_string(docroot_dir(&base, &p).join(".user.ini")).unwrap();
         assert!(!ini.contains(&old_path) && ini.contains(&new_path), ".user.ini: {ini}");
         let waf = fs::read_to_string(docroot_dir(&base, &p).join("wordfence-waf.php")).unwrap();
