@@ -111,6 +111,14 @@ export default function LocalImport(props: {
     setPhase(null);
   }
 
+  function cancel() {
+    setPicked(null);
+    setCheck(null);
+    setPhpChoice(undefined);
+    setMysqlChoice(undefined);
+    setPhase(null);
+  }
+
   async function finish(site: LocalSite, php: string, mysql: string) {
     setPhase("importing");
     try {
@@ -254,7 +262,7 @@ export default function LocalImport(props: {
                       </button>
                     )}
                     {(phase === null || phase === "choose") && (
-                      <button type="button" className="btn small ghost" onClick={() => setPicked(null)}>
+                      <button type="button" className="btn small ghost" onClick={cancel}>
                         Cancelar
                       </button>
                     )}
