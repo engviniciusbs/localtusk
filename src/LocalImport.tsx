@@ -32,7 +32,9 @@ function NeedRow(props: {
   return (
     <div className="field">
       <p className="small">
-        O site usa {label} {need.wanted}, que não está instalado aqui.
+        {need.wanted
+          ? `O site usa ${label} ${need.wanted}, que não está instalado aqui.`
+          : `O Local não informa a versão do ${label} deste site.`}
       </p>
       <div className="row">
         {need.installVersion && (
@@ -58,7 +60,9 @@ function NeedRow(props: {
       </div>
       {!need.installVersion && !need.fallback && (
         <p className="small err-text" role="alert">
-          Não há {label} {need.wanted} para instalar e nenhuma outra versão instalada. Instale uma em PHP e ferramentas.
+          {need.wanted
+            ? `Não há ${label} ${need.wanted} para instalar e nenhuma outra versão instalada. Instale uma em PHP e ferramentas.`
+            : `Nenhum ${label} instalado. Instale um em PHP e ferramentas.`}
         </p>
       )}
       {props.olderWarning && need.fallbackOlder && choice === "use" && (

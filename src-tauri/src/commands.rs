@@ -1122,7 +1122,6 @@ enum Origin {
     /// Backup ou blueprint (`.tar.gz`).
     Archive(PathBuf),
     /// Pasta pública + dump SQL (importador do Local). Só para projetos novos.
-    #[allow(dead_code)] // criado pelo importador do Local
     Folder { public: PathBuf, dump: PathBuf },
 }
 
@@ -1417,17 +1416,26 @@ pub async fn check_local_site(state: State<'_, AppState>, id: String) -> Result<
     blocking(move || {
         let (dir, home) = local_data()?;
         let site = crate::local_import::find_site(&dir, &home, &id)?;
-        let php_wanted = crate::local_import::series(&site.php_version);
-        let mysql_wanted = crate::local_import::series(&site.mysql_version);
-
+        // Sem versão no Local: usa a mais nova instalada, sem perguntar (ou oferece a do catálogo).
         let php_have: Vec<String> = tools::php_installs(&base).into_iter().map(|i| i.version).collect();
-        let php_install = php_manager::catalog(&base).ok().and_then(|c| {
-            c.into_iter().find(|r| r.latest && r.minor == php_wanted).map(|r| r.version)
-        });
+        let php_cat: Vec<_> = php_manager::catalog(&base).unwrap_or_default().into_iter().filter(|r| r.latest).collect();
+        let php_series: Vec<String> = php_cat.iter().map(|r| r.minor.clone()).collect();
+        let php_wanted = crate::local_import::wanted_or_newest(
+            &crate::local_import::series(&site.php_version),
+            &php_have,
+            &php_series,
+        );
+        let php_install = php_cat.into_iter().find(|r| r.minor == php_wanted).map(|r| r.version);
+
         let mysql_have: Vec<String> = mysql_manager::installs(&base).into_iter().map(|i| i.series).collect();
-        let mysql_install = mysql_manager::catalog(&base).ok().and_then(|c| {
-            c.into_iter().find(|r| r.latest && r.series == mysql_wanted).map(|r| r.version)
-        });
+        let mysql_cat: Vec<_> = mysql_manager::catalog(&base).unwrap_or_default().into_iter().filter(|r| r.latest).collect();
+        let mysql_series: Vec<String> = mysql_cat.iter().map(|r| r.series.clone()).collect();
+        let mysql_wanted = crate::local_import::wanted_or_newest(
+            &crate::local_import::series(&site.mysql_version),
+            &mysql_have,
+            &mysql_series,
+        );
+        let mysql_install = mysql_cat.into_iter().find(|r| r.series == mysql_wanted).map(|r| r.version);
         Ok(LocalImportCheck {
             php: version_need(php_wanted, php_have, php_install),
             mysql: version_need(mysql_wanted, mysql_have, mysql_install),

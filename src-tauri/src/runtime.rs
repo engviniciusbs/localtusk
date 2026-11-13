@@ -1893,9 +1893,16 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
             assert!(sql.contains(&from), "o dump não tem {from}");
             sql = sql.replace(&from, &to);
         }
+        // Caminho da pasta no Local gravado no banco, serializado (como Wordfence/upload_path).
+        let public = local.join("app/public");
+        let old_path = public.display().to_string();
+        let val = format!("{old_path}/wp-content/uploads");
+        sql.push_str(&format!(
+            "\nINSERT INTO `wp_options` (`option_name`, `option_value`, `autoload`) VALUES ('lt_caminho', 'a:1:{{s:4:\"path\";s:{}:\"{val}\";}}', 'no');\n",
+            val.len()
+        ));
         fs::write(&dump, sql).unwrap();
 
-        let public = local.join("app/public");
         crate::local_import::copy_tree(&docroot_dir(&base, &src), &public, &|_| {}).expect("cópia");
         stop(&mut run_src);
         let _ = fs::remove_dir_all(project::project_dir(&base, "lfsrc"));
@@ -1918,6 +1925,9 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
         fs::create_dir_all(&extra).unwrap();
         fs::write(extra.join("leia.txt"), "oi").unwrap();
         std::os::unix::fs::symlink(&extra, public.join("wp-content/plugins/linkado")).unwrap();
+        // Wordfence: o PHP-FPM carrega este arquivo antes de tudo (precisa apontar para a cópia).
+        fs::write(public.join(".user.ini"), format!("auto_prepend_file = '{old_path}/wordfence-waf.php'\n")).unwrap();
+        fs::write(public.join("wordfence-waf.php"), format!("<?php\n// WFWAF_LOG_PATH: {old_path}/wp-content/wflogs/\n")).unwrap();
 
         let before = snapshot_tree(&local);
         let sql_mtime = fs::metadata(&dump).unwrap().modified().unwrap();
@@ -1954,6 +1964,29 @@ echo 'ext=' . (extension_loaded('pdo_pgsql') ? 'pdo_pgsql' : 'sem') . "\n";
         let text = String::from_utf8_lossy(&out.stdout).to_string();
         let siteurl = text.lines().rev().map(str::trim).find(|l| l.starts_with("http")).unwrap_or("");
         assert_eq!(siteurl, project::site_url(&p), "saída: {text}");
+
+        // O caminho do Local sumiu do banco (inclusive do valor serializado) e do .user.ini.
+        let new_path = docroot_dir(&base, &p).display().to_string();
+        let sh_out = |cmd: &str| {
+            let out = Command::new("/bin/sh")
+                .arg("-c")
+                .arg(format!("cd '{}' && {cmd}", runtime_docroot(&base, &p)))
+                .env("PATH", format!("{}:/usr/bin:/bin", shims.display()))
+                .output()
+                .unwrap();
+            String::from_utf8_lossy(&out.stdout).to_string()
+        };
+        let opt = sh_out("wp option get lt_caminho --format=json").replace("\\/", "/");
+        assert!(opt.contains(&format!("{new_path}/wp-content/uploads")), "lt_caminho: {opt}");
+        assert!(!opt.contains(&old_path), "lt_caminho ainda tem o caminho do Local: {opt}");
+        let hits = sh_out(&format!(
+            "mysql --skip-column-names -e \"SELECT COUNT(*) FROM wp_options WHERE option_value LIKE '%{old_path}%'\""
+        ));
+        assert_eq!(hits.trim(), "0", "o banco ainda tem o caminho do Local");
+        let ini = fs::read_to_string(docroot_dir(&base, &p).join(".user.ini")).unwrap();
+        assert!(!ini.contains(&old_path) && ini.contains(&new_path), ".user.ini: {ini}");
+        let waf = fs::read_to_string(docroot_dir(&base, &p).join("wordfence-waf.php")).unwrap();
+        assert!(!waf.contains(&old_path), "wordfence-waf.php: {waf}");
 
         let host = format!("Host: {}:{}\r\n", project::site_host(&p), p.http_port);
         let home = http_request(p.http_port, "GET", "/", &host, "");

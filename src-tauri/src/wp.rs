@@ -110,6 +110,23 @@ pub fn retarget(base: &Path, p: &Project, progress: &dyn Fn(InstallProgress)) ->
     Ok(())
 }
 
+/// Troca um texto por outro em todas as tabelas do banco do WordPress (`wp search-replace`,
+/// que respeita dados serializados). Usado para trocar o caminho antigo de um site importado.
+pub fn search_replace_all(
+    base: &Path,
+    p: &Project,
+    old: &str,
+    new: &str,
+    progress: &dyn Fn(InstallProgress),
+) -> Result<(), String> {
+    let php = php_cli(base, p, progress)?;
+    if extras::wpcli_phar(base).is_none() {
+        extras::install(base, "wpcli", progress)?;
+    }
+    let cmd = wp_command(base, p, &php, &["search-replace", old, new, "--all-tables"])?;
+    run_logged(base, p, "wp search-replace (caminho)", cmd, Duration::from_secs(600))
+}
+
 /// Escapa um texto para uso entre aspas simples em scripts de shell.
 fn sh_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', r"'\''"))

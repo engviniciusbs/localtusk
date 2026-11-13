@@ -102,11 +102,13 @@ fn newest_mtime(dir: &Path) -> Option<SystemTime> {
     let mut best: Option<SystemTime> = None;
     for entry in fs::read_dir(dir).ok()?.flatten() {
         let p = entry.path();
-        let t = if p.is_dir() { newest_mtime(&p) } else { mtime(&p) };
-        if let Some(t) = t {
-            if best.map_or(true, |b| t > b) {
-                best = Some(t);
-            }
+        // `file_type` não segue links: um link para pasta (ou em laço) conta só o próprio mtime.
+        let is_dir = entry.file_type().is_ok_and(|t| t.is_dir());
+        let t = if is_dir { newest_mtime(&p) } else { mtime(&p) };
+        if let Some(t) = t
+            && best.is_none_or(|b| t > b)
+        {
+            best = Some(t);
         }
     }
     best
@@ -146,7 +148,10 @@ fn build_site(data_dir: &Path, home: &Path, id: &str, v: &Value, status: Option<
         path,
         domain: text(v, "domain"),
         php_version: service_version("php"),
-        mysql_version: service_version("mysql"),
+        // Sites antigos do Local usam MariaDB no lugar do MySQL.
+        mysql_version: Some(service_version("mysql"))
+            .filter(|v| !v.is_empty())
+            .unwrap_or_else(|| service_version("mariadb")),
         web_server: web_server.to_string(),
         multisite,
         running: status == Some("running"),
@@ -185,15 +190,26 @@ fn build_site(data_dir: &Path, home: &Path, id: &str, v: &Value, status: Option<
     site
 }
 
+/// Links simbólicos encontrados por [`copy_tree`] (caminhos relativos, com `/`).
+#[derive(Debug, Default, PartialEq)]
+pub struct CopiedLinks {
+    /// Links para pastas, copiados como pastas de verdade.
+    pub dirs: Vec<String>,
+    /// Links para arquivos, copiados como arquivos.
+    pub files: Vec<String>,
+    /// Links quebrados, ilegíveis ou em laço, que ficaram de fora.
+    pub skipped: Vec<String>,
+}
+
 /// Copia `src` para `dst` (criando `dst`). Links simbólicos viram cópia do
 /// conteúdo apontado; laços e links quebrados são pulados. `on_file` recebe a
-/// contagem acumulada de arquivos copiados. Devolve os caminhos relativos
-/// (com `/`) que eram links. A origem só é lida, nunca alterada.
-pub fn copy_tree(src: &Path, dst: &Path, on_file: &dyn Fn(u64)) -> Result<Vec<String>, String> {
+/// contagem acumulada de arquivos copiados. Devolve os links encontrados,
+/// separados entre copiados e pulados. A origem só é lida, nunca alterada.
+pub fn copy_tree(src: &Path, dst: &Path, on_file: &dyn Fn(u64)) -> Result<CopiedLinks, String> {
     let raiz = src
         .canonicalize()
         .map_err(|e| format!("Não foi possível ler {}: {e}", src.display()))?;
-    let mut links = Vec::new();
+    let mut links = CopiedLinks::default();
     let mut count = 0u64;
     copy_dir(&raiz, dst, "", &mut vec![raiz.clone()], &mut count, on_file, &mut links)?;
     Ok(links)
@@ -206,7 +222,7 @@ fn copy_dir(
     ancestrais: &mut Vec<PathBuf>,
     count: &mut u64,
     on_file: &dyn Fn(u64),
-    links: &mut Vec<String>,
+    links: &mut CopiedLinks,
 ) -> Result<(), String> {
     fs::create_dir_all(dst).map_err(|e| format!("Não foi possível criar {}: {e}", dst.display()))?;
     let entries = fs::read_dir(src).map_err(|e| format!("Não foi possível ler {}: {e}", src.display()))?;
@@ -222,26 +238,35 @@ fn copy_dir(
         let alvo_dst = dst.join(&name);
         let meta = fs::symlink_metadata(&path).map_err(|e| format!("Não foi possível ler {}: {e}", path.display()))?;
         let eh_link = meta.file_type().is_symlink();
-        if eh_link {
-            links.push(rel_item.clone());
-        }
         // Resolve o link (se for) para o destino real; quebrado = pula.
         let real = if eh_link {
             match path.canonicalize() {
                 Ok(r) => r,
-                Err(_) => continue,
+                Err(_) => {
+                    links.skipped.push(rel_item);
+                    continue;
+                }
             }
         } else {
             path.clone()
         };
         let meta_real = match fs::metadata(&real) {
             Ok(m) => m,
-            Err(_) => continue,
+            Err(_) => {
+                if eh_link {
+                    links.skipped.push(rel_item);
+                }
+                continue;
+            }
         };
         if meta_real.is_dir() {
             // Link para uma pasta ancestral = laço.
             if eh_link && ancestrais.contains(&real) {
+                links.skipped.push(rel_item);
                 continue;
+            }
+            if eh_link {
+                links.dirs.push(rel_item.clone());
             }
             ancestrais.push(real.clone());
             let r = copy_dir(&real, &alvo_dst, &rel_item, ancestrais, count, on_file, links);
@@ -249,8 +274,13 @@ fn copy_dir(
             r?;
         } else if meta_real.is_file() {
             fs::copy(&real, &alvo_dst).map_err(|e| format!("Não foi possível copiar {}: {e}", path.display()))?;
+            if eh_link {
+                links.files.push(rel_item);
+            }
             *count += 1;
             on_file(*count);
+        } else if eh_link {
+            links.skipped.push(rel_item);
         }
     }
     Ok(())
@@ -275,6 +305,16 @@ pub fn fallback_version(wanted: &str, installed: &[String]) -> Option<(String, b
         })
         .or_else(|| installed.iter().max_by_key(|s| serie_num(s)))?;
     Some((melhor.clone(), serie_num(melhor) < w))
+}
+
+/// Série a usar quando o Local não diz a versão (`wanted` vazio): a mais nova instalada;
+/// sem nenhuma instalada, a mais nova do catálogo (para oferecer a instalação).
+pub fn wanted_or_newest(wanted: &str, installed: &[String], catalog: &[String]) -> String {
+    if !wanted.is_empty() {
+        return wanted.to_string();
+    }
+    let newest = |xs: &[String]| xs.iter().filter(|x| !x.is_empty()).max_by_key(|x| serie_num(x)).cloned();
+    newest(installed).or_else(|| newest(catalog)).unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -469,7 +509,7 @@ mod tests {
         write(&base.join("src/sub/b.txt"), "B");
         let n = std::cell::Cell::new(0u64);
         let links = copy_tree(&base.join("src"), &base.join("dst"), &|c| n.set(c)).unwrap();
-        assert!(links.is_empty());
+        assert_eq!(links, CopiedLinks::default());
         assert_eq!(fs::read_to_string(base.join("dst/a.txt")).unwrap(), "A");
         assert_eq!(fs::read_to_string(base.join("dst/sub/b.txt")).unwrap(), "B");
         assert_eq!(n.get(), 2);
@@ -484,7 +524,8 @@ mod tests {
         fs::create_dir_all(&plugins).unwrap();
         std::os::unix::fs::symlink("../../../fora/meu", plugins.join("meu")).unwrap();
         let links = copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
-        assert_eq!(links, vec!["wp-content/plugins/meu".to_string()]);
+        assert_eq!(links.dirs, vec!["wp-content/plugins/meu".to_string()]);
+        assert!(links.files.is_empty() && links.skipped.is_empty());
         let d = base.join("dst/wp-content/plugins/meu");
         assert!(!fs::symlink_metadata(&d).unwrap().file_type().is_symlink());
         assert_eq!(fs::read_to_string(d.join("x.php")).unwrap(), "X");
@@ -497,8 +538,61 @@ mod tests {
         write(&base.join("src/sub/f.txt"), "F");
         std::os::unix::fs::symlink("..", base.join("src/sub/loop")).unwrap();
         let links = copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
-        assert!(links.contains(&"sub/loop".to_string()));
+        assert_eq!(links.skipped, vec!["sub/loop".to_string()]);
+        assert!(links.dirs.is_empty(), "laço não é listado como copiado");
         assert!(base.join("dst/sub/f.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_quebrado_e_pulado_e_listado() {
+        let base = temp_base("quebrado");
+        write(&base.join("src/a.txt"), "A");
+        std::os::unix::fs::symlink("../nao-existe", base.join("src/morto")).unwrap();
+        let links = copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
+        assert_eq!(links.skipped, vec!["morto".to_string()]);
+        assert!(links.dirs.is_empty() && links.files.is_empty());
+        assert!(fs::symlink_metadata(base.join("dst/morto")).is_err());
+        assert!(base.join("dst/a.txt").exists());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn link_para_arquivo_vira_arquivo() {
+        let base = temp_base("linkarq");
+        write(&base.join("fora/x.txt"), "X");
+        fs::create_dir_all(base.join("src")).unwrap();
+        std::os::unix::fs::symlink("../fora/x.txt", base.join("src/x.txt")).unwrap();
+        let links = copy_tree(&base.join("src"), &base.join("dst"), &|_| {}).unwrap();
+        assert_eq!(links.files, vec!["x.txt".to_string()]);
+        assert!(links.dirs.is_empty() && links.skipped.is_empty());
+        let d = base.join("dst/x.txt");
+        assert!(fs::symlink_metadata(&d).unwrap().file_type().is_file());
+        assert_eq!(fs::read_to_string(d).unwrap(), "X");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn mtime_mais_novo_nao_segue_links() {
+        let base = temp_base("mtimelaco");
+        write(&base.join("data/sub/f"), "x");
+        std::os::unix::fs::symlink("..", base.join("data/sub/loop")).unwrap();
+        std::os::unix::fs::symlink("../data", base.join("data/self")).unwrap();
+        assert!(newest_mtime(&base.join("data")).is_some());
+    }
+
+    #[test]
+    fn mariadb_conta_como_versao_do_banco() {
+        let dir = temp_base("mariadb");
+        let (data, home) = fake_local(&dir);
+        let raw = fs::read_to_string(data.join("sites.json")).unwrap();
+        let mut v: Value = serde_json::from_str(&raw).unwrap();
+        v["maria"] = json!({"name": "maria", "path": "~/Local Sites/maria",
+            "services": {"php": {"version": "7.4.30"}, "nginx": {}, "mariadb": {"version": "10.4.32"}}});
+        write(&data.join("sites.json"), &v.to_string());
+        let s = get(&list_sites(&data, &home).unwrap(), "maria");
+        assert_eq!(s.mysql_version, "10.4.32");
+        assert_eq!(get(&list_sites(&data, &home).unwrap(), "snap1").mysql_version, "8.4.0");
     }
 
     #[cfg(unix)]
@@ -514,6 +608,15 @@ mod tests {
         assert_eq!(fs::read_to_string(base.join("src/a.txt")).unwrap(), "A");
         assert_eq!(fs::read_to_string(base.join("fora/meu/x.php")).unwrap(), "X");
         assert_eq!(fs::read_link(base.join("src/lnk")).unwrap(), PathBuf::from("../fora/meu"));
+    }
+
+    #[test]
+    fn versao_vazia_usa_a_mais_nova() {
+        let v = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(wanted_or_newest("8.2", &v(&["8.3"]), &v(&["8.4"])), "8.2");
+        assert_eq!(wanted_or_newest("", &v(&["8.1", "8.10", "8.3"]), &v(&["9.0"])), "8.10");
+        assert_eq!(wanted_or_newest("", &[], &v(&["8.0", "8.4"])), "8.4");
+        assert_eq!(wanted_or_newest("", &[], &[]), "");
     }
 
     #[test]
