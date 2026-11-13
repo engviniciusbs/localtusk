@@ -5,7 +5,6 @@ mod codemap;
 mod commands;
 mod download;
 mod extras;
-#[allow(dead_code)] // usado pelas próximas tarefas do importador
 mod local_import;
 mod mysql_manager;
 mod php_manager;
@@ -94,6 +93,9 @@ pub fn run() {
             commands::import_blueprint,
             commands::export_blueprint,
             commands::open_blueprints_dir,
+            commands::list_local_sites,
+            commands::check_local_site,
+            commands::import_local_site,
             commands::list_mysql_versions,
             commands::mysql_catalog,
             commands::install_mysql,

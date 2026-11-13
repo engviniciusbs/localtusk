@@ -1352,6 +1352,151 @@ pub async fn create_project_from_blueprint(
     Ok(result)
 }
 
+// ------------------------------------------------------------------ Importar do Local
+
+const MSG_SEM_LOCAL: &str = "Nenhuma instalação do Local encontrada neste computador.";
+
+fn home_dir() -> PathBuf {
+    dirs::home_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// Pasta de dados do Local, se existir e tiver a lista de sites.
+fn local_data() -> Result<(PathBuf, PathBuf), String> {
+    let home = home_dir();
+    let dir = crate::local_import::local_data_dir(&home).ok_or(MSG_SEM_LOCAL)?;
+    if !dir.join("sites.json").is_file() {
+        return Err(MSG_SEM_LOCAL.into());
+    }
+    Ok((dir, home))
+}
+
+/// Versão (série) que um site do Local pede, e o que fazer se ela não estiver instalada.
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct VersionNeed {
+    pub wanted: String,
+    pub installed: bool,
+    pub install_version: Option<String>,
+    pub fallback: Option<String>,
+    pub fallback_older: bool,
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LocalImportCheck {
+    pub php: VersionNeed,
+    pub mysql: VersionNeed,
+}
+
+fn version_need(wanted: String, installed: Vec<String>, install_version: Option<String>) -> VersionNeed {
+    let is_installed = installed.contains(&wanted);
+    let (fallback, fallback_older) = if is_installed {
+        (None, false)
+    } else {
+        match crate::local_import::fallback_version(&wanted, &installed) {
+            Some((v, older)) => (Some(v), older),
+            None => (None, false),
+        }
+    };
+    VersionNeed { wanted, installed: is_installed, install_version: if is_installed { None } else { install_version }, fallback, fallback_older }
+}
+
+#[tauri::command]
+pub async fn list_local_sites(_state: State<'_, AppState>) -> Result<Vec<crate::local_import::LocalSite>, String> {
+    blocking(move || {
+        let (dir, home) = local_data()?;
+        crate::local_import::list_sites(&dir, &home)
+    })
+    .await
+}
+
+/// Compara as versões de PHP e MySQL do site com as instaladas aqui.
+#[tauri::command]
+pub async fn check_local_site(state: State<'_, AppState>, id: String) -> Result<LocalImportCheck, String> {
+    let base = state.base.clone();
+    blocking(move || {
+        let (dir, home) = local_data()?;
+        let site = crate::local_import::find_site(&dir, &home, &id)?;
+        let php_wanted = crate::local_import::series(&site.php_version);
+        let mysql_wanted = crate::local_import::series(&site.mysql_version);
+
+        let php_have: Vec<String> = tools::php_installs(&base).into_iter().map(|i| i.version).collect();
+        let php_install = php_manager::catalog(&base).ok().and_then(|c| {
+            c.into_iter().find(|r| r.latest && r.minor == php_wanted).map(|r| r.version)
+        });
+        let mysql_have: Vec<String> = mysql_manager::installs(&base).into_iter().map(|i| i.series).collect();
+        let mysql_install = mysql_manager::catalog(&base).ok().and_then(|c| {
+            c.into_iter().find(|r| r.latest && r.series == mysql_wanted).map(|r| r.version)
+        });
+        Ok(LocalImportCheck {
+            php: version_need(php_wanted, php_have, php_install),
+            mysql: version_need(mysql_wanted, mysql_have, mysql_install),
+        })
+    })
+    .await
+}
+
+/// Cria um projeto novo com os arquivos e o banco de um site do Local (a origem só é lida).
+#[tauri::command]
+pub async fn import_local_site(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    id: String,
+    name: String,
+    php_version: String,
+    mysql_version: String,
+) -> Result<RestoreResult, String> {
+    let name = name.trim().to_string();
+    if name.is_empty() {
+        return Err("informe um nome para o projeto".into());
+    }
+    let site = {
+        let id = id.clone();
+        blocking(move || {
+            let (dir, home) = local_data()?;
+            crate::local_import::find_site(&dir, &home, &id)
+        })
+        .await?
+    };
+    if let Some(b) = &site.blocker {
+        return Err(b.clone());
+    }
+    let manifest = backup::Manifest {
+        format: 1,
+        id: project::slugify(&name),
+        name: name.clone(),
+        docroot: "public".into(),
+        php_version,
+        db_engine: project::ENGINE_MYSQL.into(),
+        db_version: mysql_version,
+        db_name: String::new(),
+        http_port: 0,
+        db_port: 0,
+        site_url: String::new(),
+        has_wordpress: true,
+        created_at: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0),
+        kind: String::new(),
+        blueprint_name: String::new(),
+        description: String::new(),
+    };
+    let origin = Origin::Folder {
+        public: crate::local_import::public_dir(&site),
+        dump: crate::local_import::dump_file(&site),
+    };
+    let mut result = restore_impl(app, state.inner().clone(), origin, manifest, None, Some(name)).await?;
+    let notes = site.warnings.join("\n");
+    if !notes.is_empty() {
+        result.warning = Some(match result.warning.take() {
+            Some(w) => format!("{notes}\n\n{w}"),
+            None => notes,
+        });
+    }
+    Ok(result)
+}
+
 // ------------------------------------------------------------------ Ferramentas de API
 
 /// Requisições que o PHP do projeto recebeu (a partir de `offset`; 0 = as mais recentes).

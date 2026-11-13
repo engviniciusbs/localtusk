@@ -256,6 +256,27 @@ fn copy_dir(
     Ok(())
 }
 
+/// (major, minor) de uma série como "8.2".
+fn serie_num(s: &str) -> (u32, u32) {
+    let mut it = s.split('.').map(|p| p.parse::<u32>().unwrap_or(0));
+    (it.next().unwrap_or(0), it.next().unwrap_or(0))
+}
+
+/// Escolhe, entre as séries instaladas, a que vai no lugar de `wanted`: a mesma major mais próxima
+/// (empate → a mais nova); sem a mesma major, a mais nova. O `bool` indica que a escolhida é mais antiga.
+pub fn fallback_version(wanted: &str, installed: &[String]) -> Option<(String, bool)> {
+    let w = serie_num(wanted);
+    let melhor = installed
+        .iter()
+        .filter(|s| serie_num(s).0 == w.0)
+        .min_by_key(|s| {
+            let n = serie_num(s);
+            (n.1.abs_diff(w.1), std::cmp::Reverse(n.1))
+        })
+        .or_else(|| installed.iter().max_by_key(|s| serie_num(s)))?;
+    Some((melhor.clone(), serie_num(melhor) < w))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -493,5 +514,15 @@ mod tests {
         assert_eq!(fs::read_to_string(base.join("src/a.txt")).unwrap(), "A");
         assert_eq!(fs::read_to_string(base.join("fora/meu/x.php")).unwrap(), "X");
         assert_eq!(fs::read_link(base.join("src/lnk")).unwrap(), PathBuf::from("../fora/meu"));
+    }
+
+    #[test]
+    fn fallback_escolhe_mais_proxima() {
+        let v = |xs: &[&str]| xs.iter().map(|x| x.to_string()).collect::<Vec<_>>();
+        assert_eq!(fallback_version("8.2", &v(&["8.3", "8.1"])), Some(("8.3".into(), false)));
+        assert_eq!(fallback_version("8.2", &v(&["8.1"])), Some(("8.1".into(), true)));
+        assert_eq!(fallback_version("7.4", &v(&["8.3", "8.4"])), Some(("8.4".into(), false)));
+        assert_eq!(fallback_version("8.4", &v(&["8.0"])), Some(("8.0".into(), true)));
+        assert_eq!(fallback_version("8.2", &[]), None);
     }
 }
