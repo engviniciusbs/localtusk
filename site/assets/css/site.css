@@ -449,3 +449,5 @@ code { overflow-wrap: anywhere; }
   .node b { font-size: 10.5px; letter-spacing: -0.02em; overflow-wrap: anywhere; }
   .node small { font-size: 10px; }
 }
+
+.badge-new { display: inline-block; vertical-align: middle; margin-left: 8px; font-family: var(--font-mono); font-size: 10.5px; letter-spacing: 0.06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; background: rgba(62, 207, 142, 0.14); color: var(--green); font-weight: 600; }

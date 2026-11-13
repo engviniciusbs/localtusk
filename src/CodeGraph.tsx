@@ -18,7 +18,7 @@ import "@xyflow/react/dist/style.css";
 import dagre from "@dagrejs/dagre";
 import type { CodeFile, FileKind } from "./api";
 
-const W = 230;
+const W = 210;
 const H = 44;
 const GAP = 14;
 /** Acima disso o desenho vira uma sopa de linhas; mostramos só um recorte. */
@@ -143,7 +143,7 @@ function buildLayout(files: CodeFile[], keep: Set<string>): Layout {
   }
 
   const g = new dagre.graphlib.Graph();
-  g.setGraph({ rankdir: "LR", nodesep: GAP, ranksep: 90, marginx: 0, marginy: 0 });
+  g.setGraph({ rankdir: "LR", nodesep: GAP, ranksep: 70, marginx: 0, marginy: 0 });
   g.setDefaultEdgeLabel(() => ({}));
   for (const p of linked) g.setNode(p, { width: W, height: H });
   for (const e of edges) g.setEdge(e.from, e.to);
@@ -272,13 +272,17 @@ function GraphInner({ files, selected, onSelect, query, onQuery }: CodeGraphProp
   }, [selected]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const linkCount = layout.edges.length;
+  // Projetos pequenos não precisam de uma tela alta e vazia; os grandes ganham até 720 px.
+  let bottom = 0;
+  for (const at of layout.pos.values()) bottom = Math.max(bottom, at.y + H);
+  const canvasHeight = Math.min(720, Math.max(300, bottom + 60));
 
   return (
     <div className="graph">
       <div className="graph-bar">
         <input
           type="search"
-          placeholder="Buscar arquivo ou classe…"
+          placeholder="Buscar…"
           aria-label="Buscar arquivo ou classe"
           value={query}
           onChange={(e) => onQuery(e.target.value)}
@@ -346,7 +350,7 @@ function GraphInner({ files, selected, onSelect, query, onQuery }: CodeGraphProp
         </div>
       )}
 
-      <div className="graph-canvas">
+      <div className="graph-canvas" style={{ height: canvasHeight }}>
         <ReactFlow
           nodes={nodes}
           edges={edges}
