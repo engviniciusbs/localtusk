@@ -39,6 +39,12 @@ const blueprints = [
   { fileName: "wordpress-limpo.tar.gz", path: "/Users/dev/LocalTusk/blueprints/wordpress-limpo.tar.gz", name: "WordPress limpo", description: "", size: 61_800_000, createdAt: 1794400000, sourceName: "Blog WordPress", phpVersion: "8.1.33", dbVersion: "8.4.13", docroot: "", hasWordpress: true },
 ];
 
+const localSites = [
+  { id: "aaa111", name: "Padaria do Zé", path: "/home/dev/Local Sites/padaria", domain: "padaria.local", phpVersion: "8.2.29", mysqlVersion: "8.0.35", webServer: "nginx", multisite: false, running: false, dumpSavedAt: 1794486600, dumpStale: false, blocker: null, warnings: [] as string[] },
+  { id: "bbb222", name: "Clínica Sorriso", path: "/home/dev/Local Sites/clinica", domain: "clinica.local", phpVersion: "8.3.32", mysqlVersion: "8.4.13", webServer: "nginx", multisite: false, running: true, dumpSavedAt: 1794400000, dumpStale: false, blocker: "Pare o site no Local para importar (se o Local estiver fechado, abra-o e pare o site).", warnings: [] as string[] },
+  { id: "ccc333", name: "Rede de Blogs", path: "/home/dev/Local Sites/blogs", domain: "blogs.local", phpVersion: "8.1.33", mysqlVersion: "8.4.0", webServer: "apache", multisite: true, running: false, dumpSavedAt: 1794300000, dumpStale: true, blocker: null, warnings: ["Sites multisite podem precisar de ajustes manuais.", "Regras do .htaccess não são usadas pelo LocalTusk.", "O banco salvo pelo Local pode estar desatualizado. Inicie e pare o site no Local para garantir."] },
+];
+
 const captured = [
   { time: 1794486601.2, method: "GET", uri: "/api/produtos?page=2&limit=10", host: "loja-virtual.localhost:8000", remote: "127.0.0.1", requestHeaders: [["Host", "loja-virtual.localhost:8000"], ["Accept", "application/json"], ["User-Agent", "curl/8.7.1"]], requestBody: "", requestBodyTruncated: false, requestSize: 0, form: null, files: [], status: 200, responseHeaders: [["Content-Type", "application/json"], ["X-Powered-By", "PHP/8.3.32"]], responseBody: JSON.stringify({ data: [{ id: 1, nome: "Camiseta", preco: 59.9 }, { id: 2, nome: "Caneca", preco: 24.5 }], page: 2 }), responseBodyTruncated: false, responseSize: 112, durationMs: 18.4 },
   { time: 1794486608.9, method: "POST", uri: "/api/pedidos", host: "loja-virtual.localhost:8000", remote: "127.0.0.1", requestHeaders: [["Host", "loja-virtual.localhost:8000"], ["Content-Type", "application/json"], ["Authorization", "Bearer eyJhbGciOi..."]], requestBody: JSON.stringify({ cliente: "Ana", itens: [{ produto: 1, qtd: 2 }] }), requestBodyTruncated: false, requestSize: 58, form: null, files: [], status: 201, responseHeaders: [["Content-Type", "application/json"], ["Location", "/api/pedidos/42"]], responseBody: JSON.stringify({ id: 42, status: "criado" }), responseBodyTruncated: false, responseSize: 28, durationMs: 41.7 },
@@ -131,6 +137,24 @@ export function installDevMock() {
           return bp;
         }
         case "create_project_from_blueprint": return { project: projects[0], warning: "O blueprint foi feito com PHP 8.1.33, que não está instalado aqui. O projeto usa as versões mais recentes instaladas." };
+        case "list_local_sites":
+          // Com "?semlocal" na URL, simula o Local não instalado.
+          return new URLSearchParams(location.search).has("semlocal") ? Promise.reject("Nenhuma instalação do Local encontrada neste computador.") : later(localSites);
+        case "check_local_site": {
+          const s = localSites.find((x) => x.id === a.id)!;
+          const missingPhp = s.phpVersion.startsWith("8.2");
+          return later({
+            php: missingPhp
+              ? { wanted: "8.2", installed: false, installVersion: "8.2.30", fallback: "8.3", fallbackOlder: false }
+              : { wanted: s.phpVersion.split(".").slice(0, 2).join("."), installed: true, installVersion: null, fallback: null, fallbackOlder: false },
+            mysql: s.mysqlVersion.startsWith("8.0")
+              ? { wanted: "8.0", installed: false, installVersion: "8.0.46", fallback: "8.4", fallbackOlder: false }
+              : { wanted: "8.4", installed: true, installVersion: null, fallback: null, fallbackOlder: false },
+          });
+        }
+        case "import_local_site": return new Promise((resolve) => setTimeout(() => resolve({ project: projects[0], warning: "Pastas ligadas por link foram copiadas como pastas comuns: wp-content/uploads." }), 800));
+        case "install_php":
+        case "install_mysql": return new Promise((resolve) => setTimeout(() => resolve(null), 1200));
         case "delete_blueprint": {
           const i = blueprints.findIndex((b) => b.path === a.path);
           if (i >= 0) blueprints.splice(i, 1);
